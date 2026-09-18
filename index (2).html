@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NV</title>
+<meta property="og:title" content="NV — 개인 단말기">
+<meta property="og:description" content="만든 것들 모아둔 곳">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+/* =========================================================
+   색: 인광 초록 하나로 밀고, 경고/각주에만 호박색을 쓴다.
+   단색 화면이라 "밝기 차이"만으로 위계를 만들어야 함.
+   ========================================================= */
+:root{
+  --bg:#030A06;
+  --screen:#06160D;
+  --phos:#2CFF88;        /* 가장 밝은 초록 = 중요한 것 */
+  --phos-mid:#17B85F;    /* 중간 밝기 = 보조 정보 */
+  --phos-dim:#0C7A3E;    /* 어두운 초록 = 선, 배경 */
+  --amber:#FFB63C;       /* 이 화면에서 유일하게 초록이 아닌 것 */
+  --mono:"Share Tech Mono", "Nanum Gothic Coding", monospace;
+  --kor:"Nanum Gothic Coding", "Share Tech Mono", monospace;
+}
+
+*{ box-sizing:border-box; }
+
+html,body{ height:100%; }
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--phos);
+  font-family:var(--mono);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  /* 화면 가장자리를 어둡게 = CRT 비네팅 */
+  background-image:radial-gradient(ellipse at center, #0A1F12 0%, #030A06 70%);
+}
+
+/* ---------- 단말기 화면 ---------- */
+.screen{
+  position:relative;
+  width:min(620px, 100%);
+  background:var(--screen);
+  border:2px solid var(--phos-dim);
+  border-radius:14px;
+  padding:22px 24px 18px;
+  overflow:hidden;
+  box-shadow:0 0 60px rgba(44,255,136,.14), inset 0 0 70px rgba(44,255,136,.06);
+  text-shadow:0 0 6px currentColor;  /* 글자가 번지는 인광 효과의 핵심 */
+}
+
+/* 스캔라인: 1px 어두운 줄을 3px 간격으로 화면 전체에 덮는다 */
+.screen::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;              /* 클릭이 이 레이어에 막히면 안 됨 */
+  background:repeating-linear-gradient(
+    rgba(0,0,0,.30) 0 1px,
+    transparent 1px 3px
+  );
+  animation:flicker 4s steps(60) infinite;
+}
+@keyframes flicker{
+  0%,100%{ opacity:.55; }
+  47%    { opacity:.62; }
+  48%    { opacity:.38; }  /* 아주 가끔 한 번 튀는 게 진짜처럼 보임 */
+  49%    { opacity:.60; }
+}
+
+/* ---------- 상단 ---------- */
+.top{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  border-bottom:1px solid var(--phos-dim);
+  padding-bottom:10px;
+  margin-bottom:16px;
+}
+.name{
+  font-size:40px;
+  line-height:.9;
+  letter-spacing:.06em;
+}
+.name sup{
+  font-size:16px;
+  color:var(--amber);
+  text-shadow:0 0 6px var(--amber);
+}
+.meta{
+  text-align:right;
+  font-size:12px;
+  color:var(--phos-mid);
+  line-height:1.6;
+}
+
+/* ---------- 부팅 문구 ---------- */
+.boot{ font-size:13px; color:var(--phos-mid); min-height:84px; }
+.boot div{ opacity:0; }
+.boot div.on{ opacity:1; }
+
+/* ---------- 목록 ---------- */
+.list{ display:none; }
+.list.on{ display:block; }
+
+.head{
+  font-size:12px;
+  color:var(--phos-mid);
+  margin-bottom:8px;
+}
+
+.item{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  width:100%;
+  padding:11px 12px;
+  border:none;
+  background:none;
+  color:inherit;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+  border-left:3px solid transparent;
+}
+/* 선택된 항목은 색을 반전시킨다 — 옛날 터미널이 쓰던 방식 */
+.item.sel{
+  background:var(--phos);
+  color:var(--screen);
+  border-left-color:var(--amber);
+  text-shadow:none;
+}
+.item.locked{ color:var(--phos-dim); }
+.item.locked.sel{ background:var(--phos-dim); color:var(--screen); }
+.item.done{ color:var(--phos-dim); cursor:not-allowed; }
+
+.num{ font-size:12px; opacity:.75; width:28px; flex:none; }
+.body-txt{ flex:1; min-width:0; }
+.t{ font-size:17px; }
+.d{ font-size:12px; opacity:.8; font-family:var(--kor); margin-top:2px; }
+.tag{ font-size:12px; flex:none; }
+
+/* ---------- 하단 ---------- */
+.bottom{
+  margin-top:16px;
+  padding-top:10px;
+  border-top:1px solid var(--phos-dim);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  font-size:12px;
+  color:var(--phos-mid);
+  flex-wrap:wrap;
+}
+.note{
+  margin-top:12px;
+  font-family:var(--kor);
+  font-size:12px;
+  color:var(--phos-mid);
+}
+.note b{ color:var(--amber); font-weight:400; text-shadow:0 0 6px var(--amber); }
+
+/* 깜빡이는 커서 */
+.cur{ animation:blink 1.1s steps(1) infinite; }
+@keyframes blink{ 50%{ opacity:0; } }
+
+/* 움직임을 줄여달라고 설정한 사람에겐 전부 끈다 */
+@media (prefers-reduced-motion: reduce){
+  .screen::after, .cur{ animation:none; }
+}
+
+@media (max-width:420px){
+  .name{ font-size:32px; }
+  .t{ font-size:15px; }
+}
+</style>
+</head>
+<body>
+
+<main class="screen">
+
+  <div class="top">
+    <div class="name">NV<sup>*</sup></div>
+    <div class="meta">
+      개인 단말기<br>
+      <span id="uptime">웹개발 1일차</span>
+    </div>
+  </div>
+
+  <!-- 켜지자마자 지나가는 부팅 문구 -->
+  <div class="boot" id="boot">
+    <div>&gt; 전원 공급 ... 정상</div>
+    <div>&gt; 저장 장치 연결 ... 정상</div>
+    <div>&gt; 사용자 인증 ... 승인됨</div>
+    <div>&gt; 목록 불러오는 중<span class="cur">_</span></div>
+  </div>
+
+  <!-- 부팅이 끝나면 나타나는 실제 내용 -->
+  <div class="list" id="list">
+    <div class="head">&gt; 보관된 항목</div>
+
+    <button class="item" data-go="game.html">
+      <span class="num">001</span>
+      <span class="body-txt">
+        <span class="t">MOLE</span>
+        <span class="d">두더지 잡기. 30초 반사신경 게임</span>
+      </span>
+      <span class="tag">[실행]</span>
+    </button>
+
+    <button class="item done" disabled>
+      <span class="num">002</span>
+      <span class="body-txt">
+        <span class="t">RHYTHM</span>
+        <span class="d">4키 리듬게임. 제작 예정</span>
+      </span>
+      <span class="tag">[대기]</span>
+    </button>
+
+    <button class="item locked" data-go="schedule.html">
+      <span class="num">003</span>
+      <span class="body-txt">
+        <span class="t">██████</span>
+        <span class="d">접근 권한 없음</span>
+      </span>
+      <span class="tag">[잠김]</span>
+    </button>
+
+    <div class="bottom">
+      <span>↑↓ 이동 · ENTER 실행</span>
+      <span id="clock">--:--:--</span>
+    </div>
+  </div>
+
+  <p class="note"><b>*</b> 기계공학 전공. 여기 있는 건 전부 취미로 만든 것들.</p>
+
+</main>
+
+<script>
+/* =========================================================
+   1) 부팅 연출 — 줄을 하나씩 켠다
+   ========================================================= */
+const boot  = document.getElementById('boot');
+const list  = document.getElementById('list');
+const lines = boot.querySelectorAll('div');
+
+// 움직임 줄이기를 켠 사람은 연출을 건너뛴다
+const noMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function finishBoot(){
+  boot.style.display = 'none';
+  list.classList.add('on');
+}
+
+if(noMotion){
+  lines.forEach(l => l.classList.add('on'));
+  finishBoot();
+}else{
+  lines.forEach((line, i) => {
+    setTimeout(() => line.classList.add('on'), 180 * i);
+  });
+  setTimeout(finishBoot, 180 * lines.length + 350);
+}
+
+// 기다리기 싫은 사람을 위해: 아무거나 누르면 바로 넘어감
+function skip(){ if(!list.classList.contains('on')) finishBoot(); }
+document.addEventListener('keydown', skip, { once:true });
+document.addEventListener('pointerdown', skip, { once:true });
+
+
+/* =========================================================
+   2) 목록 — 키보드로 위아래 이동
+   ========================================================= */
+const items = Array.from(document.querySelectorAll('.item:not([disabled])'));
+let sel = 0;
+
+function draw(){
+  document.querySelectorAll('.item').forEach(el => el.classList.remove('sel'));
+  items[sel].classList.add('sel');
+}
+draw();
+
+function move(step){
+  sel = (sel + step + items.length) % items.length;  // 끝에서 반대편으로 돌아감
+  draw();
+}
+
+function open(){
+  const url = items[sel].dataset.go;
+  if(url) window.location.href = url;
+}
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'ArrowDown' || e.key === 's'){ e.preventDefault(); move(1); }
+  if(e.key === 'ArrowUp'   || e.key === 'w'){ e.preventDefault(); move(-1); }
+  if(e.key === 'Enter'){ open(); }
+});
+
+// 마우스와 터치도 당연히 되게
+items.forEach((el, i) => {
+  el.addEventListener('mouseenter', () => { sel = i; draw(); });
+  el.addEventListener('click', () => { sel = i; open(); });
+});
+
+
+/* =========================================================
+   3) 시계와 날짜 계산
+   ========================================================= */
+const START = new Date(2026, 8, 18);   // 웹개발 시작한 날 (월은 0부터라 8 = 9월)
+
+function tick(){
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toTimeString().slice(0, 8);
+
+  const days = Math.floor((now - START) / 86400000) + 1;
+  document.getElementById('uptime').textContent = '웹개발 ' + days + '일차';
+}
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
