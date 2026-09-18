@@ -22,7 +22,7 @@
   --phos:#2CFF88;        /* 가장 밝은 초록 = 중요한 것 */
   --phos-mid:#17B85F;    /* 중간 밝기 = 보조 정보 */
   --phos-dim:#0C7A3E;    /* 어두운 초록 = 선, 배경 */
-  --amber:#FFB63C;       /* 이 화면에서 유일하게 초록이 아닌 것 */
+  --amber:#FFB63C;       /* 이 화면에서 유일하게 초록이 아닌 색 */
   --mono:"Share Tech Mono", "Nanum Gothic Coding", monospace;
   --kor:"Nanum Gothic Coding", "Share Tech Mono", monospace;
 }
@@ -40,11 +40,66 @@ body{
   align-items:center;
   justify-content:center;
   padding:16px;
-  /* 화면 가장자리를 어둡게 = CRT 비네팅 */
   background-image:radial-gradient(ellipse at center, #0A1F12 0%, #030A06 70%);
 }
 
-/* ---------- 단말기 화면 ---------- */
+/* =========================================================
+   1) 부팅 로그 화면
+   초록 단말기가 아니라 일부러 회색 CMD 톤으로 간다.
+   그래야 뒤에 초록 화면이 켜질 때 대비가 살아남.
+   ========================================================= */
+.bootscreen{
+  position:fixed;
+  inset:0;
+  z-index:50;
+  background:#000;
+  color:#C9D3C9;
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.6;
+  padding:22px 18px;
+  overflow:hidden;
+}
+.bootscreen pre{
+  margin:0;
+  font:inherit;
+  white-space:pre-wrap;
+  word-break:break-all;
+}
+.bootscreen .ok{ color:#8FE3A8; }
+.bootscreen .warn{ color:var(--amber); }
+
+.caret{ animation:blink 1s steps(1) infinite; }
+
+.skiphint{
+  position:absolute;
+  right:18px;
+  bottom:16px;
+  font-size:11px;
+  color:#49544A;
+  opacity:0;
+  transition:opacity .5s;
+}
+.skiphint.on{ opacity:1; }
+
+/* 켜지는 순간의 흰 섬광 */
+.flash{
+  position:fixed;
+  inset:0;
+  z-index:40;
+  background:#E6FFF0;
+  opacity:0;
+  pointer-events:none;
+}
+.flash.on{ animation:flashOut .45s ease-out forwards; }
+@keyframes flashOut{
+  0%  { opacity:.85; }
+  100%{ opacity:0; }
+}
+
+/* =========================================================
+   2) 단말기 화면
+   ========================================================= */
 .screen{
   position:relative;
   width:min(620px, 100%);
@@ -54,7 +109,25 @@ body{
   padding:22px 24px 18px;
   overflow:hidden;
   box-shadow:0 0 60px rgba(44,255,136,.14), inset 0 0 70px rgba(44,255,136,.06);
-  text-shadow:0 0 6px currentColor;  /* 글자가 번지는 인광 효과의 핵심 */
+  text-shadow:0 0 6px currentColor;  /* 글자가 번지는 인광 효과 */
+  visibility:hidden;                 /* 부팅이 끝나기 전엔 감춤 */
+}
+.screen.on{ visibility:visible; }
+
+/* TV 켜지는 연출.
+   scaleY 를 0에 가깝게 눌러두면 그 자체가 가로 한 줄처럼 보인다.
+   거기에 brightness 를 올려서 흰 선으로 만들고, 위아래로 펼친다. */
+.screen.on.tv{
+  transform-origin:center;
+  animation:tvOn .7s cubic-bezier(.16,.9,.16,1) forwards;
+}
+@keyframes tvOn{
+  0%  { transform:scaleY(.005) scaleX(.55); filter:brightness(16) saturate(0); }
+  20% { transform:scaleY(.005) scaleX(1);   filter:brightness(16) saturate(0); }
+  45% { transform:scaleY(.05)  scaleX(1);   filter:brightness(12) saturate(.2); }
+  72% { transform:scaleY(1)    scaleX(1);   filter:brightness(3.4); }
+  88% { filter:brightness(1.35); }
+  100%{ transform:scaleY(1)    scaleX(1);   filter:brightness(1); }
 }
 
 /* 스캔라인: 1px 어두운 줄을 3px 간격으로 화면 전체에 덮는다 */
@@ -102,15 +175,7 @@ body{
   line-height:1.6;
 }
 
-/* ---------- 부팅 문구 ---------- */
-.boot{ font-size:13px; color:var(--phos-mid); min-height:84px; }
-.boot div{ opacity:0; }
-.boot div.on{ opacity:1; }
-
 /* ---------- 목록 ---------- */
-.list{ display:none; }
-.list.on{ display:block; }
-
 .head{
   font-size:12px;
   color:var(--phos-mid);
@@ -169,24 +234,34 @@ body{
 }
 .note b{ color:var(--amber); font-weight:400; text-shadow:0 0 6px var(--amber); }
 
-/* 깜빡이는 커서 */
-.cur{ animation:blink 1.1s steps(1) infinite; }
 @keyframes blink{ 50%{ opacity:0; } }
 
 /* 움직임을 줄여달라고 설정한 사람에겐 전부 끈다 */
 @media (prefers-reduced-motion: reduce){
-  .screen::after, .cur{ animation:none; }
+  .screen::after, .caret{ animation:none; }
+  .screen.on.tv{ animation:none; }
+  .flash.on{ animation:none; }
 }
 
 @media (max-width:420px){
   .name{ font-size:32px; }
   .t{ font-size:15px; }
+  .bootscreen{ font-size:11px; }
 }
 </style>
 </head>
 <body>
 
-<main class="screen">
+<!-- 부팅 로그가 찍히는 검은 화면 -->
+<div class="bootscreen" id="bootscreen">
+  <pre id="bootlog"></pre>
+  <div class="skiphint" id="skiphint">press any key to skip</div>
+</div>
+
+<!-- 켜지는 순간 번쩍이는 레이어 -->
+<div class="flash" id="flash"></div>
+
+<main class="screen" id="screen">
 
   <div class="top">
     <div class="name">NV<sup>*</sup></div>
@@ -196,49 +271,38 @@ body{
     </div>
   </div>
 
-  <!-- 켜지자마자 지나가는 부팅 문구 -->
-  <div class="boot" id="boot">
-    <div>&gt; Power supply ........... ONLINE</div>
-    <div>&gt; Storage link ........... CONNECTED</div>
-    <div>&gt; User authentication ... AUTHORIZED maybe idk bro</div>
-    <div>&gt; Loading directory<span class="cur">_</span></div>
-  </div>
+  <div class="head">&gt; Archived Projects</div>
 
-  <!-- 부팅이 끝나면 나타나는 실제 내용 -->
-  <div class="list" id="list">
-    <div class="head">&gt; Archived Projects</div>
+  <button class="item" data-go="songs.html">
+    <span class="num">001</span>
+    <span class="body-txt">
+      <span class="t">SONGS</span>
+      <span class="d">My ai songs</span>
+    </span>
+    <span class="tag">[Execute]</span>
+  </button>
 
-    <button class="item" data-go="songs.html">
-      <span class="num">001</span>
-      <span class="body-txt">
-        <span class="t">SONGS</span>
-        <span class="d">My ai songs</span>
-      </span>
-      <span class="tag">[Execute]</span>
-    </button>
+  <button class="item done" disabled>
+    <span class="num">002</span>
+    <span class="body-txt">
+      <span class="t">RHYTHM</span>
+      <span class="d">4k Rhythmgame things maybe</span>
+    </span>
+    <span class="tag">[Execute]</span>
+  </button>
 
-    <button class="item done" disabled>
-      <span class="num">002</span>
-      <span class="body-txt">
-        <span class="t">RHYTHM</span>
-        <span class="d">4k Rhythmgame things maybe</span>
-      </span>
-      <span class="tag">[Execute]</span>
-    </button>
+  <button class="item locked" data-go="schedule.html">
+    <span class="num">003</span>
+    <span class="body-txt">
+      <span class="t">██████</span>
+      <span class="d">No Permission</span>
+    </span>
+    <span class="tag">[LOCKED]</span>
+  </button>
 
-    <button class="item locked" data-go="schedule.html">
-      <span class="num">003</span>
-      <span class="body-txt">
-        <span class="t">██████</span>
-        <span class="d">No Permission</span>
-      </span>
-      <span class="tag">[LOCKED]</span>
-    </button>
-
-    <div class="bottom">
-      <span>↑↓ move · ENTER execute</span>
-      <span id="clock">--:--:--</span>
-    </div>
+  <div class="bottom">
+    <span>↑↓ move · ENTER execute</span>
+    <span id="clock">--:--:--</span>
   </div>
 
   <p class="note"><b>*</b> jk things.</p>
@@ -247,38 +311,140 @@ body{
 
 <script>
 /* =========================================================
-   1) 부팅 연출 — 줄을 하나씩 켠다
+   ★ 연출 속도 조절
    ========================================================= */
-const boot  = document.getElementById('boot');
-const list  = document.getElementById('list');
-const lines = boot.querySelectorAll('div');
+const CHAR_DELAY = 28;    // 타이핑 한 글자 간격(ms). 크게 하면 느려짐
+const LINE_DELAY = 110;   // 줄이 툭 뜨는 간격(ms)
+const PROMPT_WAIT = 240;  // 명령어 입력 후 멈추는 시간(ms)
 
-// 움직임 줄이기를 켠 사람은 연출을 건너뛴다
+/* 부팅 로그 내용.
+   ['type', 글자]   → 한 글자씩 타이핑
+   ['line', 글자, 색] → 줄 단위로 툭 출력 ('ok' 초록 / 'warn' 호박)
+   ['wait', ms]     → 그냥 멈춤
+   ========================================================= */
+const SEQ = [
+  ['wait', 380],
+  ['type', 'C:\\NV> systemcheck'],
+  ['wait', PROMPT_WAIT],
+  ['line', 'Power supply ........... ONLINE', 'ok'],
+  ['line', 'Storage link ........... CONNECTED', 'ok'],
+  ['line', 'Audio device ........... READY', 'ok'],
+  ['line', 'User authentication ... AUTHORIZED maybe idk bro', 'ok'],
+  ['line', ''],
+
+  ['type', 'C:\\NV> mount song_list'],
+  ['wait', PROMPT_WAIT],
+  ['line', '7 audio files indexed'],
+  ['line', ''],
+
+  ['type', 'C:\\NV> decrypt entry_003'],
+  ['wait', PROMPT_WAIT],
+  ['line', 'decrypting ............. FAILED', 'warn'],
+  ['line', 'WARNING: 1 entry remains locked', 'warn'],
+  ['line', ''],
+
+  ['type', 'C:\\NV> run terminal.exe'],
+  ['wait', PROMPT_WAIT],
+  ['line', 'loading directory ...... OK', 'ok'],
+  ['line', ''],
+  ['line', 'STARTING NV TERMINAL'],
+  ['wait', 520]
+];
+
+const bootscreen = document.getElementById('bootscreen');
+const bootlog    = document.getElementById('bootlog');
+const skiphint   = document.getElementById('skiphint');
+const flash      = document.getElementById('flash');
+const screenEl   = document.getElementById('screen');
+
 const noMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function finishBoot(){
-  boot.style.display = 'none';
-  list.classList.add('on');
+/* 이 탭에서 이미 부팅을 봤는지 확인.
+   sessionStorage 는 탭을 닫으면 사라져서, songs 갔다 돌아올 때는 생략된다.
+   (localStorage 를 쓰면 영원히 안 나오니까 일부러 이걸 씀) */
+let alreadyBooted = false;
+try{ alreadyBooted = sessionStorage.getItem('nv-booted') === '1'; }catch(e){}
+
+let aborted = false;
+let done = false;
+
+function sleep(ms){
+  return new Promise(r => setTimeout(r, aborted ? 0 : ms));
 }
 
-if(noMotion){
-  lines.forEach(l => l.classList.add('on'));
-  finishBoot();
+/* 한 글자씩 찍는다. 뒤에 깜빡이는 커서를 붙여둠 */
+async function typeLine(text){
+  const span = document.createElement('span');
+  const caret = document.createElement('span');
+  caret.className = 'caret';
+  caret.textContent = '_';
+  bootlog.appendChild(span);
+  bootlog.appendChild(caret);
+
+  for(const ch of text){
+    if(aborted){ span.textContent = text; break; }
+    span.textContent += ch;
+    await sleep(CHAR_DELAY);
+  }
+  caret.remove();
+  bootlog.appendChild(document.createTextNode('\n'));
+}
+
+function putLine(text, cls){
+  const span = document.createElement('span');
+  if(cls) span.className = cls;
+  span.textContent = text;
+  bootlog.appendChild(span);
+  bootlog.appendChild(document.createTextNode('\n'));
+}
+
+/* 화면 켜기 */
+function powerOn(animate){
+  if(done) return;
+  done = true;
+
+  bootscreen.style.display = 'none';
+  screenEl.classList.add('on');
+
+  if(animate){
+    screenEl.classList.add('tv');
+    flash.classList.add('on');
+  }
+
+  try{ sessionStorage.setItem('nv-booted', '1'); }catch(e){}
+}
+
+async function runBoot(){
+  for(const step of SEQ){
+    if(aborted) break;
+    const [kind, a, b] = step;
+    if(kind === 'wait')      await sleep(a);
+    else if(kind === 'type') await typeLine(a);
+    else{ putLine(a, b); await sleep(LINE_DELAY); }
+  }
+  powerOn(!noMotion);
+}
+
+/* 아무 키나 클릭하면 건너뛴다 */
+function skip(){
+  if(done) return;
+  aborted = true;
+  powerOn(!noMotion);
+}
+
+if(alreadyBooted || noMotion){
+  /* 이미 봤거나 움직임 최소화 설정이면 바로 켠다 */
+  powerOn(false);
 }else{
-  lines.forEach((line, i) => {
-    setTimeout(() => line.classList.add('on'), 180 * i);
-  });
-  setTimeout(finishBoot, 180 * lines.length + 350);
+  document.addEventListener('keydown', skip);
+  document.addEventListener('pointerdown', skip);
+  setTimeout(() => { if(!done) skiphint.classList.add('on'); }, 1400);
+  runBoot();
 }
-
-// 기다리기 싫은 사람을 위해: 아무거나 누르면 바로 넘어감
-function skip(){ if(!list.classList.contains('on')) finishBoot(); }
-document.addEventListener('keydown', skip, { once:true });
-document.addEventListener('pointerdown', skip, { once:true });
 
 
 /* =========================================================
-   2) 목록 — 키보드로 위아래 이동
+   목록 — 키보드로 위아래 이동
    ========================================================= */
 const items = Array.from(document.querySelectorAll('.item:not([disabled])'));
 let sel = 0;
@@ -300,12 +466,12 @@ function open(){
 }
 
 document.addEventListener('keydown', e => {
+  if(!done) return;                  // 부팅 중엔 목록 조작 안 되게
   if(e.key === 'ArrowDown' || e.key === 's'){ e.preventDefault(); move(1); }
   if(e.key === 'ArrowUp'   || e.key === 'w'){ e.preventDefault(); move(-1); }
   if(e.key === 'Enter'){ open(); }
 });
 
-// 마우스와 터치도 당연히 되게
 items.forEach((el, i) => {
   el.addEventListener('mouseenter', () => { sel = i; draw(); });
   el.addEventListener('click', () => { sel = i; open(); });
@@ -313,7 +479,7 @@ items.forEach((el, i) => {
 
 
 /* =========================================================
-   3) 시계와 날짜 계산
+   시계와 날짜 계산
    ========================================================= */
 const START = new Date(2026, 8, 18);   // 웹개발 시작한 날 (월은 0부터라 8 = 9월)
 
