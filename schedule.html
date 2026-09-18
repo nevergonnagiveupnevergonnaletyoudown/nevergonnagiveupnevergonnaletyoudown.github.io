@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- 카톡이나 디스코드에 링크를 붙였을 때 뜨는 미리보기 문구.
+     여기가 사실상 제일 중요한 부분이야. 사람들은 링크보다 이 카드를 보고 누르거든. -->
+<title>2학기 시간표</title>
+<meta property="og:title" content="2학기 시간표 최종본">
+<meta property="og:description" content="강의실 변경된 거 반영했음">
+
+<style>
+:root{
+  --bg:#F5F6F8;
+  --card:#FFFFFF;
+  --ink:#1F2328;
+  --muted:#8A9099;
+  --line:#E3E6EA;
+  --bar:#3B82F6;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#16181C; --card:#1F2227; --ink:#E8EAED; --muted:#9AA0A8; --line:#2E3239; }
+}
+
+*{ box-sizing:border-box; }
+
+body{
+  margin:0;
+  min-height:100vh;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:system-ui, -apple-system, "Segoe UI", sans-serif;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:32px 28px;
+  width:100%;
+  max-width:360px;
+  text-align:center;
+}
+
+/* 빙글빙글 도는 동그라미 */
+.spinner{
+  width:36px;
+  height:36px;
+  margin:0 auto 18px;
+  border:3px solid var(--line);
+  border-top-color:var(--bar);
+  border-radius:50%;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{ to{ transform:rotate(360deg); } }
+
+h1{ font-size:16px; font-weight:600; margin:0 0 6px; }
+p{ font-size:13px; color:var(--muted); margin:0 0 20px; }
+
+/* 진행 막대: 채워지는 시간이 아래 DELAY 값과 맞아야 자연스러워 */
+.track{
+  height:4px;
+  background:var(--line);
+  border-radius:999px;
+  overflow:hidden;
+}
+.fill{
+  height:100%;
+  width:0;
+  background:var(--bar);
+  border-radius:999px;
+  animation:load 2.6s ease-in-out forwards;
+}
+@keyframes load{
+  0%   { width:0; }
+  55%  { width:72%; }   /* 중간에 살짝 멈칫하는 게 진짜처럼 보임 */
+  100% { width:100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="spinner"></div>
+  <h1>파일을 여는 중</h1>
+  <p>잠시만 기다려 주세요</p>
+  <div class="track"><div class="fill"></div></div>
+</div>
+
+<script>
+/* ---- 여기 두 줄만 바꾸면 끝 ---- */
+const TARGET = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+const DELAY  = 2600;   // 기다리는 시간(ms). 위 CSS의 2.6s 와 맞춰둘 것
+
+setTimeout(function(){
+  /* replace 를 쓰는 이유:
+     href 로 보내면 방문 기록에 이 페이지가 남아서,
+     유튜브에서 뒤로가기를 누르는 순간 여기로 돌아왔다가 또 튕겨나가. 무한루프.
+     replace 는 기록을 남기지 않아서 뒤로가기가 정상적으로 동작해. */
+  window.location.replace(TARGET);
+}, DELAY);
+</script>
+</body>
+</html>
