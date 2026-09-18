@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NV / AUDIO</title>
+<meta property="og:title" content="NV — Audio Archive">
+<meta property="og:description" content="7 tracks">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#030A06;
+  --screen:#06160D;
+  --phos:#2CFF88;
+  --phos-mid:#17B85F;
+  --phos-dim:#0C7A3E;
+  --amber:#FFB63C;
+  --mono:"Share Tech Mono", "Nanum Gothic Coding", monospace;
+  --kor:"Nanum Gothic Coding", "Share Tech Mono", monospace;
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+
+body{
+  margin:0;
+  background:var(--bg);
+  background-image:radial-gradient(ellipse at center, #0A1F12 0%, #030A06 70%);
+  color:var(--phos);
+  font-family:var(--mono);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+}
+
+.screen{
+  position:relative;
+  width:min(640px, 100%);
+  background:var(--screen);
+  border:2px solid var(--phos-dim);
+  border-radius:14px;
+  padding:22px 24px 18px;
+  overflow:hidden;
+  box-shadow:0 0 60px rgba(44,255,136,.14), inset 0 0 70px rgba(44,255,136,.06);
+  text-shadow:0 0 6px currentColor;
+}
+.screen::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:repeating-linear-gradient(rgba(0,0,0,.30) 0 1px, transparent 1px 3px);
+  opacity:.55;
+}
+
+/* ---------- 상단 ---------- */
+.top{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  border-bottom:1px solid var(--phos-dim);
+  padding-bottom:10px;
+  margin-bottom:16px;
+}
+.ttl{ font-size:26px; letter-spacing:.05em; }
+.back{
+  color:var(--phos-mid);
+  text-decoration:none;
+  font-size:13px;
+  border:1px solid var(--phos-dim);
+  padding:4px 10px;
+  flex:none;
+}
+.back:hover, .back:focus-visible{
+  background:var(--phos-mid); color:var(--screen); text-shadow:none; outline:none;
+}
+
+.head{ font-size:12px; color:var(--phos-mid); margin-bottom:8px; }
+
+/* ---------- 목록 ---------- */
+.row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  padding:9px 12px;
+  border:none;
+  border-left:3px solid transparent;
+  background:none;
+  color:inherit;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+.row.sel{
+  background:var(--phos);
+  color:var(--screen);
+  border-left-color:var(--amber);
+  text-shadow:none;
+}
+.row.dead{ color:var(--phos-dim); }
+
+.num{ font-size:12px; opacity:.75; width:26px; flex:none; }
+.name{ flex:1; min-width:0; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* 장르 태그: 밝기를 한 단계 낮춰서 제목에 안 밀리게 한다 */
+.gen{
+  font-size:11px;
+  flex:none;
+  color:var(--phos-dim);
+  border:1px solid var(--phos-dim);
+  padding:1px 6px;
+  letter-spacing:.04em;
+}
+.row.sel .gen{ color:var(--screen); border-color:var(--screen); opacity:.8; }
+
+.tag{ font-size:12px; flex:none; width:56px; text-align:right; }
+
+.eq{ display:none; gap:2px; align-items:flex-end; height:13px; flex:none; }
+.row.now .eq{ display:flex; }
+.eq i{ width:3px; background:currentColor; animation:bounce .9s ease-in-out infinite; }
+.eq i:nth-child(1){ height:40%; animation-delay:0s; }
+.eq i:nth-child(2){ height:95%; animation-delay:.2s; }
+.eq i:nth-child(3){ height:60%; animation-delay:.4s; }
+@keyframes bounce{ 50%{ transform:scaleY(.35); } }
+
+/* ---------- 플레이어 ---------- */
+.player{ margin-top:16px; padding-top:12px; border-top:1px solid var(--phos-dim); }
+.status{
+  display:flex; justify-content:space-between; gap:12px;
+  font-size:12px; color:var(--phos-mid); margin-bottom:8px;
+}
+.status .cur{ color:var(--phos); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.status .err{ color:var(--amber); text-shadow:0 0 6px var(--amber); }
+
+.track{
+  height:8px;
+  background:rgba(12,122,62,.35);
+  border:1px solid var(--phos-dim);
+  cursor:pointer;
+}
+.fill{ height:100%; width:0; background:var(--phos); }
+
+.ctrl{ display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.btn{
+  font:inherit; font-size:14px;
+  color:var(--phos); background:none;
+  border:1px solid var(--phos-dim);
+  padding:5px 12px; cursor:pointer;
+  text-shadow:inherit;
+}
+.btn:hover, .btn:focus-visible{ background:var(--phos); color:var(--screen); text-shadow:none; outline:none; }
+
+/* ---------- 볼륨 ---------- */
+.vol{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:12px;
+  color:var(--phos-mid);
+}
+.seg{ display:flex; gap:2px; cursor:pointer; }
+.seg i{
+  width:9px; height:14px;
+  border:1px solid var(--phos-dim);
+  background:transparent;
+}
+.seg i.on{ background:var(--phos); border-color:var(--phos); }
+.vol.muted .seg i.on{ background:var(--phos-dim); border-color:var(--phos-dim); }
+.vol.muted .pct{ color:var(--amber); text-shadow:0 0 6px var(--amber); }
+.pct{ width:38px; text-align:right; }
+
+.hint{
+  margin-top:10px;
+  font-size:11px;
+  color:var(--phos-dim);
+  line-height:1.6;
+}
+.note{ margin-top:6px; font-family:var(--kor); font-size:11px; color:var(--phos-dim); }
+
+@media (prefers-reduced-motion: reduce){ .eq i{ animation:none; } }
+
+@media (max-width:520px){
+  .ttl{ font-size:20px; }
+  .name{ font-size:14px; }
+  .tag{ display:none; }        /* 좁은 화면에선 상태 대신 장르를 남긴다 */
+  .vol{ margin-left:0; width:100%; }
+}
+</style>
+</head>
+<body>
+
+<main class="screen">
+
+  <div class="top">
+    <div class="ttl">AUDIO ARCHIVE</div>
+    <a class="back" href="index.html">◀ BACK</a>
+  </div>
+
+  <div class="head">&gt; 7 tracks found</div>
+
+  <!-- 곡 추가할 땐 .row 블록 하나를 복사해서
+       data-src / 제목 / 장르 세 군데만 고치면 된다. -->
+  <div id="list">
+    <button class="row" data-src="songs/01_hazy_afterlight.mp3">
+      <span class="num">001</span>
+      <span class="name">HAZY AFTERLIGHT</span>
+      <span class="gen">AMBIENT</span>
+      <span class="eq"><i></i><i></i><i></i></span>
+      <span class="tag">[PLAY]</span>
+    </button>
+    <button class="row" data-src="songs/02_clear_blue_sky.mp3">
+      <span class="num">002</span>
+      <span class="name">CLEAR BLUE SKY</span>
+      <span class="gen">CINEMATIC</span>
+      <span class="eq"><i></i><i></i><i></i></span>
+      <span class="tag">[PLAY]</span>
+    </button>
+    <button class="row" data-src="songs/03_containment_failure.mp3">
+      <span class="num">003</span>
+      <span class="name">CONTAINMENT FAILURE</span>
+      <span class="gen">INDUSTRIAL</span>
+      <span class="eq"><i></i><i></i><i></i></span>
+      <span class="tag">[PLAY]</span>
+    </button>
+    <button class="row" data-src="songs/04_its_rainy_outside.mp3">
+      <span class="num">004</span>
+      <span class="name">IT'S RAINY OUTSIDE</span>
+      <span class="gen">LOFI</span>
+      <span class="eq"><i></i><i></i><i></i></span>
+      <span class="tag">[PLAY]</span>
+    </button>
+    <button class="row" data-src="songs/05_soaring_through_the_air.mp3">
+      <span class="num">005</span>
+      <span class="name">SOARING THROUGH THE AIR</span>
+      <span class="gen">ORCHESTRAL</span>
+      <span class="eq"><i></i><i></i><i></i></span>
+      <span class="tag">[PLAY]</span>
+    </button>
+    <button class="row" data-src="songs/06_th06_boss_battle.mp3">
+      <span class="num">006</span>
+      <span class="name">TH06 BOSS BATTLE</span>
+      <span class="gen">METAL</span>
+      <span class="eq"><i></i><i></i><i></i></span>
+      <span class="tag">[PLAY]</span>
+    </button>
+    <button class="row" data-src="songs/07_merry_merchants_shop.mp3">
+      <span class="num">007</span>
+      <span class="name">THE MERRY MERCHANT'S SHOP</span>
+      <span class="gen">FOLK</span>
+      <span class="eq"><i></i><i></i><i></i></span>
+      <span class="tag">[PLAY]</span>
+    </button>
+  </div>
+
+  <div class="player">
+    <div class="status">
+      <span class="cur" id="nowPlaying">&gt; standby</span>
+      <span id="time">--:-- / --:--</span>
+    </div>
+
+    <div class="track" id="track"><div class="fill" id="fill"></div></div>
+
+    <div class="ctrl">
+      <button class="btn" id="prev">◀◀</button>
+      <button class="btn" id="toggle">▶</button>
+      <button class="btn" id="next">▶▶</button>
+
+      <div class="vol" id="vol">
+        <span>VOL</span>
+        <span class="seg" id="seg"></span>
+        <span class="pct" id="pct">70%</span>
+        <button class="btn" id="mute" style="padding:3px 8px;font-size:12px">M</button>
+      </div>
+    </div>
+
+    <div class="hint">
+      ↑↓ select · ENTER play · SPACE pause · ←→ seek 5s · + / − volume · M mute
+    </div>
+    <p class="note">장르는 임의로 붙여둔 값이라 직접 고쳐 쓸 것.</p>
+  </div>
+
+</main>
+
+<script>
+/* =========================================================
+   재생기는 하나만 두고 src 만 갈아끼운다
+   ========================================================= */
+const audio = new Audio();
+audio.preload = "none";
+
+const rows = Array.from(document.querySelectorAll('.row'));
+const nowPlaying = document.getElementById('nowPlaying');
+const timeEl  = document.getElementById('time');
+const fill    = document.getElementById('fill');
+const trackEl = document.getElementById('track');
+const toggleBtn = document.getElementById('toggle');
+
+let sel = 0;
+let cur = -1;
+
+/* =========================================================
+   볼륨
+   audio.volume 은 0 ~ 1 사이의 소수다. 그걸 10칸 막대로 보여준다.
+   ========================================================= */
+const STEPS = 10;
+const segEl = document.getElementById('seg');
+const pctEl = document.getElementById('pct');
+const volEl = document.getElementById('vol');
+
+/* 지난번에 쓰던 볼륨을 브라우저에서 꺼내온다 */
+let volume = 0.7;
+try{
+  const saved = localStorage.getItem('nv-vol');
+  if(saved !== null) volume = Number(saved);
+}catch(e){}
+
+let muted = false;
+
+/* 칸 10개를 만들고, 각 칸을 누르면 그 위치의 볼륨이 되게 한다 */
+for(let i = 0; i < STEPS; i++){
+  const cell = document.createElement('i');
+  cell.addEventListener('click', () => setVol((i + 1) / STEPS));
+  segEl.appendChild(cell);
+}
+
+function setVol(v){
+  volume = Math.min(1, Math.max(0, v));
+  muted = false;
+  applyVol();
+}
+
+function applyVol(){
+  audio.volume = volume;
+  audio.muted = muted;
+
+  const lit = Math.round(volume * STEPS);
+  segEl.querySelectorAll('i').forEach((cell, i) => cell.classList.toggle('on', i < lit));
+
+  volEl.classList.toggle('muted', muted);
+  pctEl.textContent = muted ? 'MUTE' : Math.round(volume * 100) + '%';
+
+  try{ localStorage.setItem('nv-vol', volume); }catch(e){}
+}
+applyVol();
+
+document.getElementById('mute').addEventListener('click', () => {
+  muted = !muted;
+  applyVol();
+});
+
+/* =========================================================
+   목록 표시
+   ========================================================= */
+function draw(){
+  rows.forEach((r, i) => {
+    r.classList.toggle('sel', i === sel);
+    r.classList.toggle('now', i === cur && !audio.paused);
+    r.querySelector('.tag').textContent =
+      i === cur ? (audio.paused ? '[PAUSE]' : '[NOW]') : '[PLAY]';
+  });
+  toggleBtn.textContent = audio.paused ? '▶' : '❚❚';
+}
+
+function move(step){
+  sel = (sel + step + rows.length) % rows.length;
+  draw();
+}
+
+/* =========================================================
+   재생
+   ========================================================= */
+function play(i){
+  cur = i;
+  sel = i;
+  const row = rows[i];
+  row.classList.remove('dead');
+  audio.src = row.dataset.src;
+  applyVol();                      // src 를 바꾼 뒤 볼륨을 다시 먹인다
+  audio.play().catch(() => {});
+  nowPlaying.textContent = '> ' + row.querySelector('.name').textContent;
+  nowPlaying.classList.remove('err');
+  draw();
+}
+
+function toggle(){
+  if(cur < 0){ play(sel); return; }
+  if(audio.paused) audio.play().catch(() => {});
+  else audio.pause();
+  draw();
+}
+
+function fmt(sec){
+  if(!isFinite(sec)) return '--:--';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+audio.addEventListener('timeupdate', () => {
+  const ratio = audio.duration ? audio.currentTime / audio.duration : 0;
+  fill.style.width = (ratio * 100) + '%';
+  timeEl.textContent = fmt(audio.currentTime) + ' / ' + fmt(audio.duration);
+});
+
+audio.addEventListener('play', draw);
+audio.addEventListener('pause', draw);
+
+audio.addEventListener('ended', () => {
+  if(cur < rows.length - 1) play(cur + 1);
+  else{
+    cur = -1;
+    fill.style.width = '0';
+    nowPlaying.textContent = '> standby';
+    draw();
+  }
+});
+
+/* 파일이 없거나 형식이 안 맞을 때 */
+audio.addEventListener('error', () => {
+  if(cur < 0) return;
+  rows[cur].classList.add('dead');
+  nowPlaying.textContent = '> FILE NOT FOUND: ' + rows[cur].dataset.src;
+  nowPlaying.classList.add('err');
+  timeEl.textContent = '--:-- / --:--';
+  fill.style.width = '0';
+  cur = -1;
+  draw();
+});
+
+/* =========================================================
+   조작
+   ========================================================= */
+rows.forEach((row, i) => {
+  row.addEventListener('mouseenter', () => { sel = i; draw(); });
+  row.addEventListener('click', () => { i === cur ? toggle() : play(i); });
+});
+
+document.getElementById('prev').addEventListener('click', () => play(cur <= 0 ? rows.length - 1 : cur - 1));
+document.getElementById('next').addEventListener('click', () => play(cur < 0 || cur === rows.length - 1 ? 0 : cur + 1));
+toggleBtn.addEventListener('click', toggle);
+
+trackEl.addEventListener('click', e => {
+  if(!audio.duration) return;
+  const box = trackEl.getBoundingClientRect();
+  audio.currentTime = ((e.clientX - box.left) / box.width) * audio.duration;
+});
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'ArrowDown' || e.key === 's'){ e.preventDefault(); move(1); }
+  if(e.key === 'ArrowUp'   || e.key === 'w'){ e.preventDefault(); move(-1); }
+  if(e.key === 'Enter'){ e.preventDefault(); play(sel); }
+  if(e.key === ' '){ e.preventDefault(); toggle(); }
+  if(e.key === 'ArrowRight') audio.currentTime += 5;
+  if(e.key === 'ArrowLeft')  audio.currentTime -= 5;
+  if(e.key === '+' || e.key === '=') setVol(volume + 0.1);
+  if(e.key === '-' || e.key === '_') setVol(volume - 0.1);
+  if(e.key === 'm' || e.key === 'M'){ muted = !muted; applyVol(); }
+});
+
+draw();
+</script>
+</body>
+</html>
