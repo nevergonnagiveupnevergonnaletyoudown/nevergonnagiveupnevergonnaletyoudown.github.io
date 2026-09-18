@@ -109,7 +109,6 @@ body{
 .num{ font-size:12px; opacity:.75; width:26px; flex:none; }
 .name{ flex:1; min-width:0; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-/* 장르 태그: 밝기를 한 단계 낮춰서 제목에 안 밀리게 한다 */
 .gen{
   font-size:11px;
   flex:none;
@@ -190,7 +189,7 @@ body{
 @media (max-width:520px){
   .ttl{ font-size:20px; }
   .name{ font-size:14px; }
-  .tag{ display:none; }        /* 좁은 화면에선 상태 대신 장르를 남긴다 */
+  .tag{ display:none; }
   .vol{ margin-left:0; width:100%; }
 }
 </style>
@@ -206,52 +205,52 @@ body{
 
   <div class="head">&gt; 7 tracks found</div>
 
-  <!-- 곡 추가할 땐 .row 블록 하나를 복사해서
-       data-src / 제목 / 장르 세 군데만 고치면 된다. -->
+  <!-- data-file 에는 파일 이름만 적는다.
+       폴더 이름은 아래 스크립트의 DIR 한 곳에만 있음. -->
   <div id="list">
-    <button class="row" data-src="songs/01_hazy_afterlight.mp3">
+    <button class="row" data-file="01_hazy_afterlight.mp3">
       <span class="num">001</span>
       <span class="name">HAZY AFTERLIGHT</span>
       <span class="gen">AMBIENT</span>
       <span class="eq"><i></i><i></i><i></i></span>
       <span class="tag">[PLAY]</span>
     </button>
-    <button class="row" data-src="songs/02_clear_blue_sky.mp3">
+    <button class="row" data-file="02_clear_blue_sky.mp3">
       <span class="num">002</span>
       <span class="name">CLEAR BLUE SKY</span>
       <span class="gen">CINEMATIC</span>
       <span class="eq"><i></i><i></i><i></i></span>
       <span class="tag">[PLAY]</span>
     </button>
-    <button class="row" data-src="songs/03_containment_failure.mp3">
+    <button class="row" data-file="03_containment_failure.mp3">
       <span class="num">003</span>
       <span class="name">CONTAINMENT FAILURE</span>
       <span class="gen">INDUSTRIAL</span>
       <span class="eq"><i></i><i></i><i></i></span>
       <span class="tag">[PLAY]</span>
     </button>
-    <button class="row" data-src="songs/04_its_rainy_outside.mp3">
+    <button class="row" data-file="04_its_rainy_outside.mp3">
       <span class="num">004</span>
       <span class="name">IT'S RAINY OUTSIDE</span>
       <span class="gen">LOFI</span>
       <span class="eq"><i></i><i></i><i></i></span>
       <span class="tag">[PLAY]</span>
     </button>
-    <button class="row" data-src="songs/05_soaring_through_the_air.mp3">
+    <button class="row" data-file="05_soaring_through_the_air.mp3">
       <span class="num">005</span>
       <span class="name">SOARING THROUGH THE AIR</span>
       <span class="gen">ORCHESTRAL</span>
       <span class="eq"><i></i><i></i><i></i></span>
       <span class="tag">[PLAY]</span>
     </button>
-    <button class="row" data-src="songs/06_th06_boss_battle.mp3">
+    <button class="row" data-file="06_th06_boss_battle.mp3">
       <span class="num">006</span>
       <span class="name">TH06 BOSS BATTLE</span>
       <span class="gen">METAL</span>
       <span class="eq"><i></i><i></i><i></i></span>
       <span class="tag">[PLAY]</span>
     </button>
-    <button class="row" data-src="songs/07_merry_merchants_shop.mp3">
+    <button class="row" data-file="07_merry_merchants_shop.mp3">
       <span class="num">007</span>
       <span class="name">THE MERRY MERCHANT'S SHOP</span>
       <span class="gen">FOLK</span>
@@ -291,8 +290,13 @@ body{
 
 <script>
 /* =========================================================
-   재생기는 하나만 두고 src 만 갈아끼운다
+   ★ mp3 들어있는 폴더 이름. 폴더를 옮기거나 이름을 바꿨으면
+     여기 한 줄만 고치면 7곡 전부 따라온다.
+     끝에 슬래시(/) 빼먹지 말 것.
    ========================================================= */
+const DIR = "song_list/";
+
+
 const audio = new Audio();
 audio.preload = "none";
 
@@ -306,16 +310,20 @@ const toggleBtn = document.getElementById('toggle');
 let sel = 0;
 let cur = -1;
 
+/* 각 줄의 실제 파일 경로를 만들어주는 함수.
+   폴더 + 파일이름 을 붙이는 게 전부다. */
+function pathOf(i){
+  return DIR + rows[i].dataset.file;
+}
+
 /* =========================================================
-   볼륨
-   audio.volume 은 0 ~ 1 사이의 소수다. 그걸 10칸 막대로 보여준다.
+   볼륨 — audio.volume 은 0 ~ 1 사이의 소수
    ========================================================= */
 const STEPS = 10;
 const segEl = document.getElementById('seg');
 const pctEl = document.getElementById('pct');
 const volEl = document.getElementById('vol');
 
-/* 지난번에 쓰던 볼륨을 브라우저에서 꺼내온다 */
 let volume = 0.7;
 try{
   const saved = localStorage.getItem('nv-vol');
@@ -324,7 +332,6 @@ try{
 
 let muted = false;
 
-/* 칸 10개를 만들고, 각 칸을 누르면 그 위치의 볼륨이 되게 한다 */
 for(let i = 0; i < STEPS; i++){
   const cell = document.createElement('i');
   cell.addEventListener('click', () => setVol((i + 1) / STEPS));
@@ -380,12 +387,11 @@ function move(step){
 function play(i){
   cur = i;
   sel = i;
-  const row = rows[i];
-  row.classList.remove('dead');
-  audio.src = row.dataset.src;
-  applyVol();                      // src 를 바꾼 뒤 볼륨을 다시 먹인다
+  rows[i].classList.remove('dead');
+  audio.src = pathOf(i);
+  applyVol();
   audio.play().catch(() => {});
-  nowPlaying.textContent = '> ' + row.querySelector('.name').textContent;
+  nowPlaying.textContent = '> ' + rows[i].querySelector('.name').textContent;
   nowPlaying.classList.remove('err');
   draw();
 }
@@ -423,11 +429,12 @@ audio.addEventListener('ended', () => {
   }
 });
 
-/* 파일이 없거나 형식이 안 맞을 때 */
+/* 파일을 못 찾으면 어떤 경로를 찾으려 했는지 화면에 그대로 보여준다.
+   이게 있어야 폴더 이름이 틀렸을 때 바로 알아챌 수 있음. */
 audio.addEventListener('error', () => {
   if(cur < 0) return;
   rows[cur].classList.add('dead');
-  nowPlaying.textContent = '> FILE NOT FOUND: ' + rows[cur].dataset.src;
+  nowPlaying.textContent = '> FILE NOT FOUND: ' + pathOf(cur);
   nowPlaying.classList.add('err');
   timeEl.textContent = '--:-- / --:--';
   fill.style.width = '0';
