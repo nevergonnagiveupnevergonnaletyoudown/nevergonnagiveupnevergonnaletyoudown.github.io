@@ -191,17 +191,17 @@ body{
   <div class="top">
     <div class="name">NV<sup>*</sup></div>
     <div class="meta">
-      개인 단말기<br>
-      <span id="uptime">웹개발 1일차</span>
+      Device<br>
+      <span id="uptime">jk things</span>
     </div>
   </div>
 
   <!-- 켜지자마자 지나가는 부팅 문구 -->
   <div class="boot" id="boot">
-    <div>&gt; 전원 공급 ... 정상</div>
-    <div>&gt; 저장 장치 연결 ... 정상</div>
-    <div>&gt; 사용자 인증 ... 승인됨</div>
-    <div>&gt; 목록 불러오는 중<span class="cur">_</span></div>
+    <div>&gt; Power supply ........... ONLINE</div>
+    <div>&gt; Storage link ........... CONNECTED</div>
+    <div>&gt; User authentication ... AUTHORIZED maybe idk bro</div>
+    <div>&gt; Loading directory<span class="cur">_</span></div>
   </div>
 
   <!-- 부팅이 끝나면 나타나는 실제 내용 -->
@@ -221,7 +221,7 @@ body{
       <span class="num">002</span>
       <span class="body-txt">
         <span class="t">RHYTHM</span>
-        <span class="d">4키 리듬게임. 제작 예정</span>
+        <span class="d">4k Rhythmgame things maybe</span>
       </span>
       <span class="tag">[Execute]</span>
     </button>
@@ -323,7 +323,7 @@ function tick(){
     now.toTimeString().slice(0, 8);
 
   const days = Math.floor((now - START) / 86400000) + 1;
-  document.getElementById('uptime').textContent = '웹개발 ' + days + '일차';
+  document.getElementById('uptime').textContent = 'Its been since I started this stupid business:' + days + 'day';
 }
 tick();
 setInterval(tick, 1000);
