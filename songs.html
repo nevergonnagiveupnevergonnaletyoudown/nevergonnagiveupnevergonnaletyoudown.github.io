@@ -11,8 +11,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
 
-<!-- 공통 스타일 -->
-<link rel="stylesheet" href="style.css?v=1">
+<!-- 공통 스타일.
+     ★ 뒤의 v= 숫자는 모든 페이지가 똑같아야 한다.
+       한 페이지만 다르면 그 페이지는 옛날 style.css 를 계속 쓴다. -->
+<link rel="stylesheet" href="style.css?v=3">
+
+<!-- CRT 지직 효과. .screen 이 있는 페이지면 어디든 이 한 줄이면 된다.
+     defer 는 "이거 받느라 화면 그리는 걸 멈추지 마라"는 뜻. -->
+<script src="fx.js?v=1" defer></script>
 
 <style>
 /* 이 페이지에서만 쓰는 것들 */
