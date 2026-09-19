@@ -11,79 +11,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
 
+<!-- 공통 스타일 -->
+<link rel="stylesheet" href="style.css?v=1">
+
 <style>
-:root{
-  --bg:#030A06;
-  --screen:#06160D;
-  --phos:#2CFF88;
-  --phos-mid:#17B85F;
-  --phos-dim:#0C7A3E;
-  --amber:#FFB63C;
-  --mono:"Share Tech Mono", "Nanum Gothic Coding", monospace;
-  --kor:"Nanum Gothic Coding", "Share Tech Mono", monospace;
-}
+/* 이 페이지에서만 쓰는 것들 */
 
-*{ box-sizing:border-box; }
-html,body{ height:100%; }
-
-body{
-  margin:0;
-  background:var(--bg);
-  background-image:radial-gradient(ellipse at center, #0A1F12 0%, #030A06 70%);
-  color:var(--phos);
-  font-family:var(--mono);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:16px;
-}
-
-.screen{
-  position:relative;
-  width:min(640px, 100%);
-  background:var(--screen);
-  border:2px solid var(--phos-dim);
-  border-radius:14px;
-  padding:22px 24px 18px;
-  overflow:hidden;
-  box-shadow:0 0 60px rgba(44,255,136,.14), inset 0 0 70px rgba(44,255,136,.06);
-  text-shadow:0 0 6px currentColor;
-}
-.screen::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background:repeating-linear-gradient(rgba(0,0,0,.30) 0 1px, transparent 1px 3px);
-  opacity:.55;
-}
-
-/* ---------- 상단 ---------- */
-.top{
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:12px;
-  border-bottom:1px solid var(--phos-dim);
-  padding-bottom:10px;
-  margin-bottom:16px;
-}
-.ttl{ font-size:26px; letter-spacing:.05em; }
-.back{
-  color:var(--phos-mid);
-  text-decoration:none;
-  font-size:13px;
-  border:1px solid var(--phos-dim);
-  padding:4px 10px;
-  flex:none;
-}
-.back:hover, .back:focus-visible{
-  background:var(--phos-mid); color:var(--screen); text-shadow:none; outline:none;
-}
-
-.head{ font-size:12px; color:var(--phos-mid); margin-bottom:8px; }
-
-/* ---------- 목록 ---------- */
+/* ---------- 트랙 목록 ---------- */
 .row{
   display:flex;
   align-items:center;
@@ -98,20 +32,19 @@ body{
   text-align:left;
   cursor:pointer;
 }
-.row.sel{
-  background:var(--phos);
-  color:var(--screen);
-  border-left-color:var(--amber);
-  text-shadow:none;
-}
-.row.dead{ color:var(--phos-dim); }
+.row.dead{ color:var(--phos-dim); }     /* 파일을 못 찾은 트랙 */
 
 .num{ font-size:12px; opacity:.75; width:26px; flex:none; }
 .name{ flex:1; min-width:0; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
+/* 장르 태그: 밝기를 한 단계 낮춰서 제목에 안 밀리게 한다 */
 .gen{
   font-size:11px;
   flex:none;
+  max-width:45%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
   color:var(--phos-dim);
   border:1px solid var(--phos-dim);
   padding:1px 6px;
@@ -121,6 +54,7 @@ body{
 
 .tag{ font-size:12px; flex:none; width:56px; text-align:right; }
 
+/* 재생 중인 줄에 붙는 막대 3개 */
 .eq{ display:none; gap:2px; align-items:flex-end; height:13px; flex:none; }
 .row.now .eq{ display:flex; }
 .eq i{ width:3px; background:currentColor; animation:bounce .9s ease-in-out infinite; }
@@ -147,14 +81,6 @@ body{
 .fill{ height:100%; width:0; background:var(--phos); }
 
 .ctrl{ display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
-.btn{
-  font:inherit; font-size:14px;
-  color:var(--phos); background:none;
-  border:1px solid var(--phos-dim);
-  padding:5px 12px; cursor:pointer;
-  text-shadow:inherit;
-}
-.btn:hover, .btn:focus-visible{ background:var(--phos); color:var(--screen); text-shadow:none; outline:none; }
 
 /* ---------- 볼륨 ---------- */
 .vol{
@@ -182,14 +108,16 @@ body{
   color:var(--phos-dim);
   line-height:1.6;
 }
-.note{ margin-top:6px; font-family:var(--kor); font-size:11px; color:var(--phos-dim); }
+
+/* 공통 .note 보다 조금 작게 */
+.note{ margin-top:6px; font-size:11px; color:var(--phos-dim); }
 
 @media (prefers-reduced-motion: reduce){ .eq i{ animation:none; } }
 
 @media (max-width:520px){
-  .ttl{ font-size:20px; }
   .name{ font-size:14px; }
-  .tag{ display:none; }
+  .tag{ display:none; }        /* 좁은 화면에선 상태 대신 장르를 남긴다 */
+  .gen{ max-width:38%; }
   .vol{ margin-left:0; width:100%; }
 }
 </style>
@@ -283,7 +211,7 @@ body{
     <div class="hint">
       ↑↓ select · ENTER play · SPACE pause · ←→ seek 5s · + / − volume · M mute
     </div>
-    <p class="note">### 일부 곡들은 소리가 크면 귀가 아플 수 있으니 미리 볼륨을 조정하는 걸 추천</p>
+    <p class="note"><b>###</b> 일부 곡들은 소리가 크면 귀가 아플 수 있으니 미리 볼륨을 조정하는 걸 추천</p>
   </div>
 
 </main>

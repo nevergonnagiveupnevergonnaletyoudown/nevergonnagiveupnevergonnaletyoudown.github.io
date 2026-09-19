@@ -1,0 +1,193 @@
+/* =========================================================
+   NV 공통 스타일
+   두 페이지 이상에서 똑같이 쓰이는 것만 여기 둔다.
+   한 페이지에서만 쓰는 건 그 페이지의 <style> 안에.
+
+   색을 바꾸고 싶으면 이 파일의 :root 만 고치면
+   사이트 전체가 한 번에 따라온다.
+   ========================================================= */
+
+:root{
+  --bg:#030A06;
+  --screen:#06160D;
+  --phos:#2CFF88;        /* 가장 밝은 초록 = 중요한 것 */
+  --phos-mid:#17B85F;    /* 중간 밝기 = 보조 정보 */
+  --phos-dim:#0C7A3E;    /* 어두운 초록 = 선, 비활성 */
+  --amber:#FFB63C;       /* 초록이 아닌 유일한 색. 강조에만 */
+  --mono:"Share Tech Mono", "Nanum Gothic Coding", monospace;
+  --kor:"Nanum Gothic Coding", "Share Tech Mono", monospace;
+}
+
+*{ box-sizing:border-box; }
+
+html,body{ height:100%; }
+
+body{
+  margin:0;
+  background:var(--bg);
+  background-image:radial-gradient(ellipse at center, #0A1F12 0%, #030A06 70%);
+  color:var(--phos);
+  font-family:var(--mono);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+}
+
+/* ---------------------------------------------------------
+   단말기 화면 틀
+   --------------------------------------------------------- */
+.screen{
+  position:relative;
+  width:min(640px, 100%);
+  background:var(--screen);
+  border:2px solid var(--phos-dim);
+  border-radius:14px;
+  padding:22px 24px 18px;
+  overflow:hidden;
+  box-shadow:0 0 60px rgba(44,255,136,.14), inset 0 0 70px rgba(44,255,136,.06);
+  text-shadow:0 0 6px currentColor;   /* 글자가 번지는 인광 효과 */
+}
+
+/* 스캔라인: 1px 어두운 줄을 3px 간격으로 화면 전체에 덮는다.
+   pointer-events:none 이 없으면 클릭이 이 막에 전부 막힌다. */
+.screen::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:repeating-linear-gradient(
+    rgba(0,0,0,.30) 0 1px,
+    transparent 1px 3px
+  );
+  animation:flicker 4s steps(60) infinite;
+}
+@keyframes flicker{
+  0%,100%{ opacity:.55; }
+  47%    { opacity:.62; }
+  48%    { opacity:.38; }   /* 아주 가끔 한 번 튀는 게 진짜처럼 보임 */
+  49%    { opacity:.60; }
+}
+
+/* ---------------------------------------------------------
+   화면 상단
+   --------------------------------------------------------- */
+.top{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  border-bottom:1px solid var(--phos-dim);
+  padding-bottom:10px;
+  margin-bottom:16px;
+}
+
+/* ★ .top 안의 .name 만 골라낸다.
+   songs 페이지는 곡 제목에도 .name 을 쓰기 때문에,
+   그냥 .name 이라고 쓰면 곡 제목까지 거대해진다. */
+.top .name{
+  font-size:40px;
+  line-height:.9;
+  letter-spacing:.06em;
+}
+.top .name sup{
+  font-size:16px;
+  color:var(--amber);
+  text-shadow:0 0 6px var(--amber);
+}
+
+.meta{
+  text-align:right;
+  font-size:12px;
+  color:var(--phos-mid);
+  line-height:1.6;
+}
+
+/* 페이지 제목 (AUDIO ARCHIVE 처럼) */
+.ttl{ font-size:26px; letter-spacing:.05em; }
+
+/* 돌아가기 버튼 */
+.back{
+  color:var(--phos-mid);
+  text-decoration:none;
+  font-size:13px;
+  border:1px solid var(--phos-dim);
+  padding:4px 10px;
+  flex:none;
+}
+.back:hover, .back:focus-visible{
+  background:var(--phos-mid);
+  color:var(--screen);
+  text-shadow:none;
+  outline:none;
+}
+
+/* 목록 위의 안내 줄 */
+.head{
+  font-size:12px;
+  color:var(--phos-mid);
+  margin-bottom:8px;
+}
+
+/* ---------------------------------------------------------
+   선택 반전
+   커서가 놓인 줄은 색을 뒤집는다. 옛날 터미널이 쓰던 방식.
+   목록의 배치는 페이지마다 달라서 각 페이지에 두고,
+   "선택되면 반전된다"는 규칙만 여기서 공유한다.
+   --------------------------------------------------------- */
+.item.sel, .row.sel{
+  background:var(--phos);
+  color:var(--screen);
+  border-left-color:var(--amber);
+  text-shadow:none;
+}
+
+/* ---------------------------------------------------------
+   버튼
+   --------------------------------------------------------- */
+.btn{
+  font:inherit;
+  font-size:14px;
+  color:var(--phos);
+  background:none;
+  border:1px solid var(--phos-dim);
+  padding:5px 12px;
+  cursor:pointer;
+  text-shadow:inherit;
+}
+.btn:hover, .btn:focus-visible{
+  background:var(--phos);
+  color:var(--screen);
+  text-shadow:none;
+  outline:none;
+}
+
+/* ---------------------------------------------------------
+   화면 아래 각주
+   --------------------------------------------------------- */
+.note{
+  margin-top:12px;
+  font-family:var(--kor);
+  font-size:12px;
+  color:var(--phos-mid);
+}
+.note b{
+  color:var(--amber);
+  font-weight:400;
+  text-shadow:0 0 6px var(--amber);
+}
+
+/* 깜빡이는 커서 */
+@keyframes blink{ 50%{ opacity:0; } }
+
+/* ---------------------------------------------------------
+   움직임 최소화 설정을 켠 사람에겐 애니메이션을 끈다
+   --------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce){
+  .screen::after{ animation:none; }
+}
+
+@media (max-width:420px){
+  .top .name{ font-size:32px; }
+  .ttl{ font-size:20px; }
+}

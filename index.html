@@ -11,43 +11,16 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
 
+<!-- 공통 스타일. 뒤의 ?v=1 은 캐시 때문에 붙인 것 —
+     style.css 를 고쳤는데 화면이 안 바뀌면 v=2, v=3 으로 올리면 된다. -->
+<link rel="stylesheet" href="style.css?v=1">
+
 <style>
-/* =========================================================
-   색: 인광 초록 하나로 밀고, 경고/각주에만 호박색을 쓴다.
-   단색 화면이라 "밝기 차이"만으로 위계를 만들어야 함.
-   ========================================================= */
-:root{
-  --bg:#030A06;
-  --screen:#06160D;
-  --phos:#2CFF88;        /* 가장 밝은 초록 = 중요한 것 */
-  --phos-mid:#17B85F;    /* 중간 밝기 = 보조 정보 */
-  --phos-dim:#0C7A3E;    /* 어두운 초록 = 선, 배경 */
-  --amber:#FFB63C;       /* 이 화면에서 유일하게 초록이 아닌 색 */
-  --mono:"Share Tech Mono", "Nanum Gothic Coding", monospace;
-  --kor:"Nanum Gothic Coding", "Share Tech Mono", monospace;
-}
+/* 이 페이지에서만 쓰는 것들 */
 
-*{ box-sizing:border-box; }
-
-html,body{ height:100%; }
-
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--phos);
-  font-family:var(--mono);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:16px;
-  background-image:radial-gradient(ellipse at center, #0A1F12 0%, #030A06 70%);
-}
-
-/* =========================================================
-   1) 부팅 로그 화면
+/* ---------- 부팅 로그 화면 ----------
    초록 단말기가 아니라 일부러 회색 CMD 톤으로 간다.
-   그래야 뒤에 초록 화면이 켜질 때 대비가 살아남.
-   ========================================================= */
+   그래야 뒤에 초록 화면이 켜질 때 대비가 살아남. */
 .bootscreen{
   position:fixed;
   inset:0;
@@ -82,7 +55,8 @@ body{
 }
 .skiphint.on{ opacity:1; }
 
-/* 켜지는 순간의 흰 섬광 */
+/* ---------- 켜지는 순간의 흰 섬광 ----------
+   너무 눈부시면 아래 .85 를 .5 정도로 낮추면 된다. */
 .flash{
   position:fixed;
   inset:0;
@@ -97,26 +71,11 @@ body{
   100%{ opacity:0; }
 }
 
-/* =========================================================
-   2) 단말기 화면
-   ========================================================= */
-.screen{
-  position:relative;
-  width:min(620px, 100%);
-  background:var(--screen);
-  border:2px solid var(--phos-dim);
-  border-radius:14px;
-  padding:22px 24px 18px;
-  overflow:hidden;
-  box-shadow:0 0 60px rgba(44,255,136,.14), inset 0 0 70px rgba(44,255,136,.06);
-  text-shadow:0 0 6px currentColor;  /* 글자가 번지는 인광 효과 */
-  visibility:hidden;                 /* 부팅이 끝나기 전엔 감춤 */
-}
-.screen.on{ visibility:visible; }
-
-/* TV 켜지는 연출.
+/* ---------- TV 켜지는 연출 ----------
    scaleY 를 0에 가깝게 눌러두면 그 자체가 가로 한 줄처럼 보인다.
    거기에 brightness 를 올려서 흰 선으로 만들고, 위아래로 펼친다. */
+.screen{ visibility:hidden; }        /* 부팅이 끝나기 전엔 감춤 */
+.screen.on{ visibility:visible; }
 .screen.on.tv{
   transform-origin:center;
   animation:tvOn .7s cubic-bezier(.16,.9,.16,1) forwards;
@@ -130,58 +89,7 @@ body{
   100%{ transform:scaleY(1)    scaleX(1);   filter:brightness(1); }
 }
 
-/* 스캔라인: 1px 어두운 줄을 3px 간격으로 화면 전체에 덮는다 */
-.screen::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;              /* 클릭이 이 레이어에 막히면 안 됨 */
-  background:repeating-linear-gradient(
-    rgba(0,0,0,.30) 0 1px,
-    transparent 1px 3px
-  );
-  animation:flicker 4s steps(60) infinite;
-}
-@keyframes flicker{
-  0%,100%{ opacity:.55; }
-  47%    { opacity:.62; }
-  48%    { opacity:.38; }  /* 아주 가끔 한 번 튀는 게 진짜처럼 보임 */
-  49%    { opacity:.60; }
-}
-
-/* ---------- 상단 ---------- */
-.top{
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  border-bottom:1px solid var(--phos-dim);
-  padding-bottom:10px;
-  margin-bottom:16px;
-}
-.name{
-  font-size:40px;
-  line-height:.9;
-  letter-spacing:.06em;
-}
-.name sup{
-  font-size:16px;
-  color:var(--amber);
-  text-shadow:0 0 6px var(--amber);
-}
-.meta{
-  text-align:right;
-  font-size:12px;
-  color:var(--phos-mid);
-  line-height:1.6;
-}
-
-/* ---------- 목록 ---------- */
-.head{
-  font-size:12px;
-  color:var(--phos-mid);
-  margin-bottom:8px;
-}
-
+/* ---------- 항목 목록 ---------- */
 .item{
   display:flex;
   align-items:center;
@@ -195,13 +103,6 @@ body{
   text-align:left;
   cursor:pointer;
   border-left:3px solid transparent;
-}
-/* 선택된 항목은 색을 반전시킨다 — 옛날 터미널이 쓰던 방식 */
-.item.sel{
-  background:var(--phos);
-  color:var(--screen);
-  border-left-color:var(--amber);
-  text-shadow:none;
 }
 .item.locked{ color:var(--phos-dim); }
 .item.locked.sel{ background:var(--phos-dim); color:var(--screen); }
@@ -226,25 +127,14 @@ body{
   color:var(--phos-mid);
   flex-wrap:wrap;
 }
-.note{
-  margin-top:12px;
-  font-family:var(--kor);
-  font-size:12px;
-  color:var(--phos-mid);
-}
-.note b{ color:var(--amber); font-weight:400; text-shadow:0 0 6px var(--amber); }
 
-@keyframes blink{ 50%{ opacity:0; } }
-
-/* 움직임을 줄여달라고 설정한 사람에겐 전부 끈다 */
 @media (prefers-reduced-motion: reduce){
-  .screen::after, .caret{ animation:none; }
+  .caret{ animation:none; }
   .screen.on.tv{ animation:none; }
   .flash.on{ animation:none; }
 }
 
 @media (max-width:420px){
-  .name{ font-size:32px; }
   .t{ font-size:15px; }
   .bootscreen{ font-size:11px; }
 }
@@ -318,9 +208,15 @@ const LINE_DELAY = 110;   // 줄이 툭 뜨는 간격(ms)
 const PROMPT_WAIT = 240;  // 명령어 입력 후 멈추는 시간(ms)
 
 /* 부팅 로그 내용.
-   ['type', 글자]   → 한 글자씩 타이핑
-   ['line', 글자, 색] → 줄 단위로 툭 출력 ('ok' 초록 / 'warn' 호박)
-   ['wait', ms]     → 그냥 멈춤
+   ['type', 글자]     → 한 글자씩 타이핑
+   ['line', 글자, 색] → 줄 단위로 툭 출력
+   ['wait', ms]       → 그냥 멈춤
+
+   ★ 세 번째 칸은 화면에 안 보이는 "색 이름"이다.
+     'ok'   → 초록
+     'warn' → 호박색
+     비워두면 → 기본 회색
+     글자를 더 넣고 싶으면 두 번째 칸에 이어 쓸 것.
    ========================================================= */
 const SEQ = [
   ['wait', 380],
@@ -360,7 +256,7 @@ const screenEl   = document.getElementById('screen');
 const noMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* 이 탭에서 이미 부팅을 봤는지 확인.
-   sessionStorage 는 탭을 닫으면 사라져서, songs 갔다 돌아올 때는 생략된다.
+   sessionStorage 는 탭을 닫으면 사라져서, songs 갔다 돌아올 땐 생략된다.
    (localStorage 를 쓰면 영원히 안 나오니까 일부러 이걸 씀) */
 let alreadyBooted = false;
 try{ alreadyBooted = sessionStorage.getItem('nv-booted') === '1'; }catch(e){}
@@ -411,6 +307,10 @@ function powerOn(animate){
     flash.classList.add('on');
   }
 
+  /* 부팅용 리스너는 역할이 끝났으니 떼어낸다 */
+  document.removeEventListener('keydown', skip);
+  document.removeEventListener('pointerdown', skip);
+
   try{ sessionStorage.setItem('nv-booted', '1'); }catch(e){}
 }
 
@@ -425,16 +325,19 @@ async function runBoot(){
   powerOn(!noMotion);
 }
 
-/* 아무 키나 클릭하면 건너뛴다 */
-function skip(){
+/* 아무 키나 클릭하면 건너뛴다.
+   ★ stopImmediatePropagation 이 핵심.
+   이게 없으면 Enter 로 건너뛴 순간, 같은 Enter 가 아래의
+   목록 리스너까지 흘러가서 001 번이 바로 실행돼버린다. */
+function skip(e){
   if(done) return;
+  if(e) e.stopImmediatePropagation();
   aborted = true;
   powerOn(!noMotion);
 }
 
 if(alreadyBooted || noMotion){
-  /* 이미 봤거나 움직임 최소화 설정이면 바로 켠다 */
-  powerOn(false);
+  powerOn(false);                 // 이미 봤으면 바로 켜기
 }else{
   document.addEventListener('keydown', skip);
   document.addEventListener('pointerdown', skip);
@@ -460,7 +363,9 @@ function move(step){
   draw();
 }
 
-function open(){
+/* open 이라는 이름은 브라우저에 이미 window.open 으로 있어서
+   그대로 쓰면 덮어써버린다. 그래서 다른 이름을 쓴다. */
+function openSelected(){
   const url = items[sel].dataset.go;
   if(url) window.location.href = url;
 }
@@ -469,12 +374,12 @@ document.addEventListener('keydown', e => {
   if(!done) return;                  // 부팅 중엔 목록 조작 안 되게
   if(e.key === 'ArrowDown' || e.key === 's'){ e.preventDefault(); move(1); }
   if(e.key === 'ArrowUp'   || e.key === 'w'){ e.preventDefault(); move(-1); }
-  if(e.key === 'Enter'){ open(); }
+  if(e.key === 'Enter'){ openSelected(); }
 });
 
 items.forEach((el, i) => {
   el.addEventListener('mouseenter', () => { sel = i; draw(); });
-  el.addEventListener('click', () => { sel = i; open(); });
+  el.addEventListener('click', () => { sel = i; openSelected(); });
 });
 
 
