@@ -12,8 +12,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
 
 <!-- 공통 스타일. style.css 를 고쳤는데 화면이 안 바뀌면
-     아래 v=2 를 v=3 으로 올리면 된다. -->
-<link rel="stylesheet" href="style.css?v=2">
+     아래 v=3 을 v=4 로 올리면 된다. -->
+<link rel="stylesheet" href="style.css?v=3">
 
 <style>
 /* 이 페이지에서만 쓰는 것들 — 부팅 연출 */
@@ -73,7 +73,11 @@
 
 /* ---------- TV 켜지는 연출 ----------
    scaleY 를 0에 가깝게 눌러두면 그 자체가 가로 한 줄처럼 보인다.
-   거기에 brightness 를 올려서 흰 선으로 만들고, 위아래로 펼친다. */
+   거기에 brightness 를 올려서 흰 선으로 만들고, 위아래로 펼친다.
+
+   ★ .tv 클래스는 연출이 끝나면 JS 가 떼어낸다.
+     안 떼면 이 animation 이 계속 .screen 을 붙잡고 있어서
+     나중에 지직이 터질 때 흔들림(fx-shake)이 안 먹는다. */
 .screen{ visibility:hidden; }        /* 부팅이 끝나기 전엔 감춤 */
 .screen.on{ visibility:visible; }
 .screen.on.tv{
@@ -275,6 +279,17 @@ function powerOn(animate){
   if(animate){
     screenEl.classList.add('tv');
     flash.classList.add('on');
+
+    /* ★ TV 켜지는 연출이 끝나면 .tv 를 떼어낸다.
+       이 클래스가 남아 있으면 .screen.on.tv 의 animation 이
+       계속 우선권을 쥐고 있어서, 나중에 지직이 터질 때
+       fx-shake 가 무시된다. (지금은 흔들림이 0 이라 티는 안 나지만
+       fx.js 에서 SHAKE 를 올리면 바로 체감된다) */
+    screenEl.addEventListener('animationend', function off(e){
+      if(e.animationName !== 'tvOn') return;
+      screenEl.classList.remove('tv');
+      screenEl.removeEventListener('animationend', off);
+    });
   }
 
   /* 부팅용 리스너는 역할이 끝났으니 떼어낸다 */
@@ -369,5 +384,10 @@ function tick(){
 tick();
 setInterval(tick, 1000);
 </script>
+
+<!-- CRT 지직 효과. 숫자는 fx.js 맨 위에서 고친다.
+     고쳤는데 안 바뀌면 아래 v=1 을 v=2 로 올릴 것. -->
+<script src="fx.js?v=1"></script>
+
 </body>
 </html>
