@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NV / ONE CARD</title>
+<meta property="og:title" content="NV — One Card">
+<meta property="og:description" content="play one card against the machine">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css?v=2">
+
+<style>
+/* 이 페이지에서만 쓰는 것들 */
+
+.screen{ width:min(680px, 100%); }
+
+/* ---------- 상대 손패 ---------- */
+.cpu{
+  display:flex;
+  justify-content:center;
+  min-height:56px;
+  margin-bottom:12px;
+}
+.cardback{
+  width:34px; height:52px;
+  border:1px solid var(--phos-dim);
+  border-radius:5px;
+  background:repeating-linear-gradient(45deg,
+    rgba(44,255,136,.10) 0 3px, transparent 3px 6px);
+  flex:none;
+}
+.cpu .cardback:not(:first-child){ margin-left:-14px; }
+
+/* ---------- 가운데 판 ---------- */
+.table{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:22px;
+  padding:14px 0;
+  border-top:1px solid var(--phos-dim);
+  border-bottom:1px solid var(--phos-dim);
+}
+.pile{ text-align:center; font-size:11px; color:var(--phos-mid); }
+.pile .cap{ display:block; margin-top:6px; }
+.deckback{
+  width:62px; height:90px;
+  margin:0 auto;
+  border:1px solid var(--phos-dim);
+  border-radius:6px;
+  background:repeating-linear-gradient(45deg,
+    rgba(44,255,136,.10) 0 3px, transparent 3px 6px);
+}
+
+/* ---------- 카드 ---------- */
+.card{
+  width:54px; height:78px;
+  flex:none;
+  border:1px solid var(--phos-dim);
+  border-radius:6px;
+  background:var(--screen);
+  color:var(--phos);
+  font:inherit;
+  cursor:pointer;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:2px;
+  transition:transform .12s;
+}
+.card .r{ font-size:15px; line-height:1; }
+.card .s{ font-size:22px; line-height:1; }
+.card.red{ color:var(--amber); border-color:rgba(255,182,60,.45); }
+.card.jk{ color:var(--amber); border-color:rgba(255,182,60,.45); }
+.card.jk .r{ font-size:11px; }
+.card.jk .s{ font-size:12px; }
+.card.big{ width:62px; height:90px; cursor:default; }
+
+/* 지금 낼 수 없는 카드는 어둡게 */
+.card.dim{ color:var(--phos-dim); border-color:var(--phos-dim); opacity:.45; }
+
+/* 커서가 놓인 카드는 위로 뜬다 */
+.card.sel{
+  transform:translateY(-12px);
+  border-color:var(--phos);
+  box-shadow:0 0 14px rgba(44,255,136,.35);
+}
+
+/* ---------- 내 손패 ---------- */
+.hand{
+  display:flex;
+  justify-content:center;
+  gap:4px;
+  padding:18px 2px 6px;
+  overflow-x:auto;
+  min-height:110px;
+}
+
+/* ---------- 조작 줄 ---------- */
+.ctrl{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  margin-top:4px;
+}
+.callbtn{
+  display:none;
+  margin-left:auto;
+  border-color:var(--amber);
+  color:var(--amber);
+}
+.callbtn.on{ display:inline-block; animation:pulse .6s ease-in-out infinite alternate; }
+@keyframes pulse{ to{ box-shadow:0 0 16px rgba(255,182,60,.6); } }
+
+/* ---------- 무늬 고르기 ---------- */
+.ask{
+  display:none;
+  align-items:center;
+  gap:8px;
+  margin-top:10px;
+  flex-wrap:wrap;
+  font-size:12px;
+  color:var(--phos-mid);
+}
+.ask.on{ display:flex; }
+
+/* ---------- 알림줄 ---------- */
+.log{
+  min-height:52px;
+  font-size:12px;
+  color:var(--phos-mid);
+  line-height:1.7;
+  margin-top:10px;
+}
+.log .hot{ color:var(--amber); text-shadow:0 0 6px var(--amber); }
+
+@media (prefers-reduced-motion: reduce){
+  .card{ transition:none; }
+  .callbtn.on{ animation:none; }
+}
+
+@media (max-width:520px){
+  .card{ width:44px; height:64px; }
+  .card .r{ font-size:13px; }
+  .card .s{ font-size:18px; }
+  .card.big{ width:54px; height:78px; }
+  .hand{ justify-content:flex-start; }
+}
+</style>
+</head>
+<body>
+
+<main class="screen">
+
+  <div class="top">
+    <div class="ttl">ONE CARD</div>
+    <a class="back" href="misc.html">◀ BACK</a>
+  </div>
+
+  <div class="head">&gt; <span id="status">your turn</span></div>
+
+  <!-- 상대 손패 (뒷면만 보인다) -->
+  <div class="cpu" id="cpuHand"></div>
+
+  <!-- 덱 / 버린 패 / 현재 무늬 -->
+  <div class="table">
+    <div class="pile">
+      <div class="deckback"></div>
+      <span class="cap">DECK <b id="deckCount">0</b></span>
+    </div>
+    <div class="pile">
+      <div id="topCard"></div>
+      <span class="cap">SUIT <b id="curSuit">-</b></span>
+    </div>
+  </div>
+
+  <!-- 내 손패 -->
+  <div class="hand" id="myHand"></div>
+
+  <div class="ctrl">
+    <button class="btn" id="drawBtn">DRAW</button>
+    <button class="btn" id="newBtn">NEW GAME</button>
+    <button class="btn callbtn" id="callBtn">ONE CARD!</button>
+  </div>
+
+  <!-- 7 을 냈을 때 무늬 고르는 줄 -->
+  <div class="ask" id="suitAsk">
+    <span>pick a suit:</span>
+    <button class="btn" data-suit="S">&#9824;</button>
+    <button class="btn" data-suit="H">&#9829;</button>
+    <button class="btn" data-suit="D">&#9830;</button>
+    <button class="btn" data-suit="C">&#9827;</button>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <div class="bottom">
+    <span>&#8592;&#8594; select &middot; ENTER play &middot; D draw &middot; O one card</span>
+    <span id="score">0 : 0</span>
+  </div>
+
+  <p class="note"><b>*</b> A는 3장, 2는 2장 공격. 3은 방어. 7은 무늬 변경. J·Q·K는 한 번 더. 조커는 흑백 5장 / 컬러 7장이고 조커로만 막는다. 마지막 한 장은 공격 카드로 낼 수 없다.</p>
+
+</main>
+
+<script>
+/* =========================================================
+   원카드 (2인 · 사람 vs 컴퓨터)
+
+   룰은 지역마다 다른데 여기서는 널리 쓰이는 기본 룰로 맞췄다.
+     A      상대가 3장 먹음
+     2      상대가 2장 먹음
+     3      공격 무효화 (조커 공격은 못 막음)
+     7      다음에 낼 무늬를 내가 정함
+     J, Q   상대 턴 건너뜀 = 내가 한 번 더
+            (Q는 원래 방향 전환인데 2인이면 나한테 돌아오므로 결국 같음)
+     K      한 장 더 냄
+     조커    흑백 5장 / 컬러 7장. 조커 공격은 조커로만 대응
+     공격은 누적된다. 못 막으면 쌓인 만큼 전부 먹는다.
+     마지막 남은 한 장이 공격 카드면 낼 수 없다.
+   ========================================================= */
+
+/* ---------- 바꿔도 되는 값들 ---------- */
+const START_CARDS = 7;      // 처음 나눠주는 장수
+const CPU_DELAY   = 750;    // 컴퓨터가 생각하는 척 하는 시간(ms)
+const CALL_WINDOW = 3000;   // "원카드" 외칠 수 있는 시간(ms)
+const CPU_FORGETS = 0.35;   // 컴퓨터가 원카드 외치는 걸 깜빡할 확률
+
+const SUITS = ['S', 'H', 'D', 'C'];
+const SYM   = { S:'\u2660', H:'\u2665', D:'\u2666', C:'\u2663' };
+const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+const SPECIAL = ['A','2','3','7','J','Q','K'];
+
+/* ---------- 상태 ---------- */
+let deck, discard, you, cpu;
+let turn;            // 'you' 또는 'cpu'
+let attack;          // 쌓인 공격 장수
+let attackJoker;     // 공격 사슬에 조커가 있나 (3으로 못 막음)
+let curSuit;         // 지금 맞춰야 하는 무늬. null 이면 아무거나
+let curRank;         // 지금 맞춰야 하는 숫자. null 이면 아무거나
+let sel = 0;         // 손패에서 고른 위치
+let locked = true;   // 내 조작을 막아둘 때
+let callTimer = null;
+let cpuNeedsCall = false;
+let win = 0, lose = 0;
+
+const $ = function(id){ return document.getElementById(id); };
+
+/* =========================================================
+   덱 만들기
+   ========================================================= */
+function makeDeck(){
+  const d = [];
+  for(const s of SUITS){
+    for(const r of RANKS){
+      d.push({ s:s, r:r });
+    }
+  }
+  d.push({ joker:'black' });
+  d.push({ joker:'color' });
+  return shuffle(d);
+}
+
+/* 피셔-예이츠 섞기. 뒤에서부터 임의의 앞칸과 하나씩 바꾼다. */
+function shuffle(a){
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+function isAttack(c){
+  return !!c.joker || c.r === 'A' || c.r === '2';
+}
+
+function attackValue(c){
+  if(c.joker) return c.joker === 'color' ? 7 : 5;
+  if(c.r === 'A') return 3;
+  if(c.r === '2') return 2;
+  return 0;
+}
+
+/* 덱이 비면 버린 패를 맨 위 한 장만 남기고 다시 섞는다 */
+function drawOne(){
+  if(!deck.length){
+    if(discard.length <= 1) return null;
+    const top = discard.pop();
+    deck = shuffle(discard);
+    discard = [top];
+  }
+  return deck.pop();
+}
+
+function give(hand, n){
+  for(let i = 0; i < n; i++){
+    const c = drawOne();
+    if(c) hand.push(c);
+  }
+}
+
+/* =========================================================
+   지금 낼 수 있는 카드인가
+   규칙 판단이 전부 여기 모여 있다.
+   화면에서 어둡게 표시하는 것도 이 함수를 그대로 쓴다.
+   ========================================================= */
+function canPlay(c, hand){
+  if(hand.length === 1 && isAttack(c)) return false;   // 마지막 한 장 규칙
+
+  if(attack > 0){
+    if(attackJoker) return !!c.joker;                  // 조커 공격은 조커로만
+    if(c.joker) return true;                           // 지원 공격
+    return c.r === 'A' || c.r === '2' || c.r === '3';
+  }
+
+  if(c.joker) return true;
+  if(curSuit === null && curRank === null) return true;
+  return c.s === curSuit || c.r === curRank;
+}
+
+/* =========================================================
+   화면 그리기
+   ========================================================= */
+function cardEl(c, big){
+  const el = document.createElement(big ? 'div' : 'button');
+  el.className = 'card' + (big ? ' big' : '');
+
+  const r = document.createElement('span');
+  const s = document.createElement('span');
+  r.className = 'r';
+  s.className = 's';
+
+  if(c.joker){
+    el.classList.add('jk');
+    r.textContent = 'JOKER';
+    s.textContent = c.joker === 'color' ? 'COLOR' : 'BLACK';
+  }else{
+    if(c.s === 'H' || c.s === 'D') el.classList.add('red');
+    r.textContent = c.r;
+    s.textContent = SYM[c.s];
+  }
+
+  el.appendChild(r);
+  el.appendChild(s);
+  return el;
+}
+
+function render(){
+  /* 상대 손패는 뒷면만 */
+  const cpuBox = $('cpuHand');
+  cpuBox.innerHTML = '';
+  for(let i = 0; i < cpu.length; i++){
+    const b = document.createElement('div');
+    b.className = 'cardback';
+    cpuBox.appendChild(b);
+  }
+
+  /* 가운데 */
+  $('deckCount').textContent = deck.length;
+  const topBox = $('topCard');
+  topBox.innerHTML = '';
+  topBox.appendChild(cardEl(discard[discard.length - 1], true));
+  $('curSuit').textContent = curSuit ? SYM[curSuit] : 'ANY';
+
+  /* 내 손패 */
+  const handBox = $('myHand');
+  handBox.innerHTML = '';
+  if(sel >= you.length) sel = Math.max(0, you.length - 1);
+
+  you.forEach(function(c, i){
+    const el = cardEl(c);
+    if(!canPlay(c, you)) el.classList.add('dim');
+    if(i === sel) el.classList.add('sel');
+    el.addEventListener('click', function(){
+      sel = i;
+      render();
+      tryPlay();
+    });
+    handBox.appendChild(el);
+  });
+
+  $('score').textContent = win + ' : ' + lose;
+
+  $('status').textContent = attack > 0
+    ? 'ATTACK ' + attack + ' incoming'
+    : (turn === 'you' ? 'your turn' : 'opponent thinking...');
+}
+
+let logLines = [];
+function say(text, hot){
+  const line = document.createElement('div');
+  if(hot) line.className = 'hot';
+  line.textContent = text;
+  logLines.push(line);
+  if(logLines.length > 3) logLines.shift();
+
+  const box = $('log');
+  box.innerHTML = '';
+  logLines.forEach(function(l){ box.appendChild(l); });
+}
+
+function nameOf(c){
+  if(c.joker) return c.joker === 'color' ? 'COLOR JOKER' : 'BLACK JOKER';
+  return c.r + SYM[c.s];
+}
+
+/* =========================================================
+   한 판 시작
+   ========================================================= */
+function newGame(){
+  deck = makeDeck();
+  discard = [];
+  you = [];
+  cpu = [];
+  attack = 0;
+  attackJoker = false;
+  cpuNeedsCall = false;
+  clearTimeout(callTimer);
+  $('callBtn').classList.remove('on');
+  $('suitAsk').classList.remove('on');
+  logLines = [];
+  $('log').innerHTML = '';
+
+  give(you, START_CARDS);
+  give(cpu, START_CARDS);
+
+  /* 첫 장은 특수 카드가 아닌 걸로 고른다 */
+  let first = drawOne();
+  while(first && (first.joker || SPECIAL.indexOf(first.r) !== -1)){
+    deck.unshift(first);
+    first = drawOne();
+  }
+  discard = [first];
+  curSuit = first.s;
+  curRank = first.r;
+
+  turn = 'you';
+  locked = false;
+  sel = 0;
+  say('game start. match the suit or the number.');
+  render();
+}
+
+/* =========================================================
+   내 차례
+   ========================================================= */
+function tryPlay(){
+  if(locked || turn !== 'you') return;
+  const c = you[sel];
+  if(!c) return;
+
+  if(!canPlay(c, you)){
+    if(you.length === 1 && isAttack(c)){
+      say('마지막 한 장은 공격 카드로 낼 수 없다.', true);
+    }
+    return;
+  }
+  playCard(you, c, 'you');
+}
+
+function drawTurn(){
+  if(locked || turn !== 'you') return;
+
+  if(attack > 0){
+    give(you, attack);
+    say('you take ' + attack + ' cards.', true);
+    attack = 0;
+    attackJoker = false;
+    /* 조커를 맞고 나면 무늬 제약이 풀린다 */
+    if(discard[discard.length - 1].joker){ curSuit = null; curRank = null; }
+  }else{
+    give(you, 1);
+    say('you draw 1.');
+  }
+  endTurn('cpu');
+}
+
+/* =========================================================
+   카드 한 장 내기 (사람과 컴퓨터가 같이 쓴다)
+   ========================================================= */
+function playCard(hand, c, who){
+  hand.splice(hand.indexOf(c), 1);
+  discard.push(c);
+  say((who === 'you' ? 'you play ' : 'opponent plays ') + nameOf(c));
+
+  curRank = c.joker ? null : c.r;
+  curSuit = c.joker ? null : c.s;
+
+  let again = false;
+
+  if(c.joker){
+    attack += attackValue(c);
+    attackJoker = true;
+  }else if(c.r === 'A' || c.r === '2'){
+    attack += attackValue(c);
+  }else if(c.r === '3' && attack > 0){
+    say('attack blocked.', true);
+    attack = 0;
+    attackJoker = false;
+  }else if(c.r === 'J' || c.r === 'Q'){
+    again = true;
+    say(who === 'you' ? 'opponent skipped.' : 'your turn skipped.', true);
+  }else if(c.r === 'K'){
+    again = true;
+  }else if(c.r === '7'){
+    if(who === 'you'){
+      locked = true;
+      $('suitAsk').classList.add('on');
+      render();
+      return;                       // 무늬를 고를 때까지 여기서 멈춘다
+    }
+    curSuit = cpuPickSuit();
+    say('opponent calls ' + SYM[curSuit] + '.', true);
+  }
+
+  afterPlay(hand, who, again);
+}
+
+function afterPlay(hand, who, again){
+  render();
+
+  /* 손패를 다 털었으면 끝 */
+  if(hand.length === 0){
+    locked = true;
+    clearTimeout(callTimer);
+    $('callBtn').classList.remove('on');
+    if(who === 'you'){ win++; say('YOU WIN.', true); }
+    else{ lose++; say('YOU LOSE.', true); }
+    $('status').textContent = 'press NEW GAME';
+    render();
+    return;
+  }
+
+  /* 한 장 남았으면 원카드 */
+  if(hand.length === 1) startCall(who);
+
+  if(again){
+    if(who === 'you'){
+      turn = 'you';
+      locked = false;
+      render();
+    }else{
+      setTimeout(cpuTurn, CPU_DELAY);
+    }
+    return;
+  }
+  endTurn(who === 'you' ? 'cpu' : 'you');
+}
+
+function endTurn(next){
+  turn = next;
+  if(next === 'cpu'){
+    locked = true;
+    render();
+    setTimeout(cpuTurn, CPU_DELAY);
+  }else{
+    locked = false;
+    render();
+  }
+}
+
+/* =========================================================
+   원카드 외치기
+   ========================================================= */
+function startCall(who){
+  clearTimeout(callTimer);
+
+  if(who === 'you'){
+    cpuNeedsCall = false;
+    $('callBtn').classList.add('on');
+    say('one card. call it, fast.', true);
+    callTimer = setTimeout(function(){
+      $('callBtn').classList.remove('on');
+      give(you, 1);
+      say('too slow. opponent called it first. +1 card', true);
+      render();
+    }, CALL_WINDOW);
+    return;
+  }
+
+  /* 컴퓨터도 가끔 깜빡한다. 그때 내가 먼저 누르면 상대가 먹는다. */
+  if(Math.random() < CPU_FORGETS){
+    cpuNeedsCall = true;
+    $('callBtn').classList.add('on');
+    callTimer = setTimeout(function(){
+      cpuNeedsCall = false;
+      $('callBtn').classList.remove('on');
+    }, CALL_WINDOW);
+  }else{
+    say('opponent: ONE CARD.', true);
+  }
+}
+
+function callOneCard(){
+  if(cpuNeedsCall){
+    cpuNeedsCall = false;
+    clearTimeout(callTimer);
+    $('callBtn').classList.remove('on');
+    give(cpu, 1);
+    say('you caught them. opponent takes 1.', true);
+    render();
+    return;
+  }
+  if(you.length === 1 && $('callBtn').classList.contains('on')){
+    clearTimeout(callTimer);
+    $('callBtn').classList.remove('on');
+    say('ONE CARD declared.', true);
+  }
+}
+
+/* =========================================================
+   컴퓨터 차례
+   ========================================================= */
+function cpuPickSuit(){
+  /* 자기가 제일 많이 가진 무늬를 부른다 */
+  const count = { S:0, H:0, D:0, C:0 };
+  cpu.forEach(function(c){ if(c.s) count[c.s]++; });
+  return SUITS.reduce(function(a, b){ return count[a] >= count[b] ? a : b; });
+}
+
+function findBy(list, test){
+  for(const c of list){ if(test(c)) return c; }
+  return null;
+}
+
+function cpuTurn(){
+  if(turn !== 'cpu') return;
+
+  const playable = cpu.filter(function(c){ return canPlay(c, cpu); });
+
+  if(!playable.length){
+    if(attack > 0){
+      give(cpu, attack);
+      say('opponent takes ' + attack + ' cards.', true);
+      attack = 0;
+      attackJoker = false;
+      if(discard[discard.length - 1].joker){ curSuit = null; curRank = null; }
+    }else{
+      give(cpu, 1);
+      say('opponent draws 1.');
+    }
+    endTurn('you');
+    return;
+  }
+
+  let pick = null;
+  const block = findBy(playable, function(c){ return c.r === '3'; });
+
+  if(attack > 0){
+    /* 공격이 크면 막고, 작으면 되받아친다 */
+    if(block && attack >= 5){
+      pick = block;
+    }else{
+      pick = findBy(playable, function(c){ return !!c.joker; })
+          || findBy(playable, function(c){ return c.r === 'A'; })
+          || findBy(playable, function(c){ return c.r === '2'; })
+          || block;
+    }
+  }else if(you.length <= 2){
+    /* 상대가 코앞이면 공격부터 */
+    pick = findBy(playable, function(c){ return !!c.joker; })
+        || findBy(playable, function(c){ return c.r === 'A'; })
+        || findBy(playable, function(c){ return c.r === '2'; })
+        || findBy(playable, function(c){ return ['J','Q','K'].indexOf(c.r) !== -1; });
+  }
+
+  if(!pick){
+    /* 평소엔 평범한 카드부터 털고 특수 카드는 아껴둔다 */
+    pick = findBy(playable, function(c){
+      return !c.joker && SPECIAL.indexOf(c.r) === -1;
+    }) || playable[0];
+  }
+
+  playCard(cpu, pick, 'cpu');
+}
+
+/* =========================================================
+   조작
+   ========================================================= */
+$('drawBtn').addEventListener('click', drawTurn);
+$('newBtn').addEventListener('click', newGame);
+$('callBtn').addEventListener('click', callOneCard);
+
+document.querySelectorAll('#suitAsk .btn').forEach(function(b){
+  b.addEventListener('click', function(){
+    curSuit = b.dataset.suit;
+    $('suitAsk').classList.remove('on');
+    say('you call ' + SYM[curSuit] + '.', true);
+    locked = false;
+    afterPlay(you, 'you', false);
+  });
+});
+
+document.addEventListener('keydown', function(e){
+  if(e.key === 'o' || e.key === 'O'){ callOneCard(); return; }
+  if(locked || turn !== 'you') return;
+
+  if(e.key === 'ArrowRight'){ e.preventDefault(); sel = Math.min(you.length - 1, sel + 1); render(); }
+  if(e.key === 'ArrowLeft'){  e.preventDefault(); sel = Math.max(0, sel - 1); render(); }
+  if(e.key === 'Enter'){      e.preventDefault(); tryPlay(); }
+  if(e.key === 'd' || e.key === 'D'){ drawTurn(); }
+});
+
+newGame();
+</script>
+</body>
+</html>
