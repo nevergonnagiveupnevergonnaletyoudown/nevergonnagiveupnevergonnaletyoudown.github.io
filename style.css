@@ -130,16 +130,60 @@ body{
 }
 
 /* ---------------------------------------------------------
+   항목 목록 (홈 / 잡동사니 공용)
+   안쪽 조각은 전부 .item 아래로 범위를 좁혀둔다.
+   songs 페이지도 .num 과 .tag 라는 이름을 쓰기 때문에,
+   범위를 안 좁히면 서로 간섭한다.
+   --------------------------------------------------------- */
+.item{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  width:100%;
+  padding:11px 12px;
+  border:none;
+  background:none;
+  color:inherit;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+  border-left:3px solid transparent;
+}
+.item.locked{ color:var(--phos-dim); }
+.item.locked.sel{ background:var(--phos-dim); color:var(--screen); }
+.item.done{ color:var(--phos-dim); cursor:not-allowed; }
+
+.item .num{ font-size:12px; opacity:.75; width:28px; flex:none; }
+.item .body-txt{ flex:1; min-width:0; }
+.item .t{ font-size:17px; }
+.item .d{ font-size:12px; opacity:.8; font-family:var(--kor); margin-top:2px; }
+.item .tag{ font-size:12px; flex:none; }
+
+/* ---------------------------------------------------------
    선택 반전
    커서가 놓인 줄은 색을 뒤집는다. 옛날 터미널이 쓰던 방식.
-   목록의 배치는 페이지마다 달라서 각 페이지에 두고,
-   "선택되면 반전된다"는 규칙만 여기서 공유한다.
    --------------------------------------------------------- */
 .item.sel, .row.sel{
   background:var(--phos);
   color:var(--screen);
   border-left-color:var(--amber);
   text-shadow:none;
+}
+
+/* ---------------------------------------------------------
+   화면 하단 상태줄
+   --------------------------------------------------------- */
+.bottom{
+  margin-top:16px;
+  padding-top:10px;
+  border-top:1px solid var(--phos-dim);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  font-size:12px;
+  color:var(--phos-mid);
+  flex-wrap:wrap;
 }
 
 /* ---------------------------------------------------------
@@ -190,4 +234,5 @@ body{
 @media (max-width:420px){
   .top .name{ font-size:32px; }
   .ttl{ font-size:20px; }
+  .item .t{ font-size:15px; }
 }

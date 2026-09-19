@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NV / MISC</title>
+<meta property="og:title" content="NV — Misc">
+<meta property="og:description" content="random small junk">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- 공통 스타일 -->
+<link rel="stylesheet" href="style.css?v=2">
+
+<!-- 이 페이지는 따로 쓰는 스타일이 없다.
+     목록 모양이 전부 style.css 에서 오기 때문. -->
+</head>
+<body>
+
+<main class="screen">
+
+  <div class="top">
+    <div class="ttl">MISC</div>
+    <a class="back" href="index.html">◀ BACK</a>
+  </div>
+
+  <div class="head">&gt; small junk drawer</div>
+
+  <!-- ★ 칸 추가하는 법
+       아래 <button> 덩어리 하나를 통째로 복사해서
+       data-go(갈 곳) / 번호 / 제목 / 설명 네 군데만 바꾸면 된다.
+       아직 안 만든 건 class 에 done 을 넣고 disabled 를 붙여두면
+       회색으로 잠긴 채 목록에 남는다. -->
+
+  <button class="item" data-go="game.html">
+    <span class="num">001</span>
+    <span class="body-txt">
+      <span class="t">MOLE</span>
+      <span class="d">Whack-a-mole. 30 seconds</span>
+    </span>
+    <span class="tag">[Execute]</span>
+  </button>
+
+  <button class="item" data-go="firstthing.html">
+    <span class="num">002</span>
+    <span class="body-txt">
+      <span class="t">ORIGIN</span>
+      <span class="d">The very first page I ever made</span>
+    </span>
+    <span class="tag">[Execute]</span>
+  </button>
+
+  <div class="bottom">
+    <span>↑↓ move · ENTER execute · ESC back</span>
+    <span id="count">--</span>
+  </div>
+
+</main>
+
+<script>
+/* =========================================================
+   목록 조작.
+   홈과 같은 방식이지만 부팅 연출이 없어서 훨씬 짧다.
+   ========================================================= */
+const items = Array.from(document.querySelectorAll('.item:not([disabled])'));
+let sel = 0;
+
+function draw(){
+  document.querySelectorAll('.item').forEach(el => el.classList.remove('sel'));
+  if(items.length) items[sel].classList.add('sel');
+}
+
+function move(step){
+  if(!items.length) return;
+  sel = (sel + step + items.length) % items.length;
+  draw();
+}
+
+function openSelected(){
+  if(!items.length) return;
+  const url = items[sel].dataset.go;
+  if(url) window.location.href = url;
+}
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'ArrowDown' || e.key === 's'){ e.preventDefault(); move(1); }
+  if(e.key === 'ArrowUp'   || e.key === 'w'){ e.preventDefault(); move(-1); }
+  if(e.key === 'Enter'){ openSelected(); }
+  if(e.key === 'Escape'){ window.location.href = 'index.html'; }
+});
+
+items.forEach((el, i) => {
+  el.addEventListener('mouseenter', () => { sel = i; draw(); });
+  el.addEventListener('click', () => { sel = i; openSelected(); });
+});
+
+/* 아래 상태줄에 항목 개수를 표시.
+   칸을 추가해도 숫자를 따로 고칠 필요가 없게 세어서 쓴다. */
+document.getElementById('count').textContent =
+  document.querySelectorAll('.item').length + ' items';
+
+draw();
+</script>
+</body>
+</html>

@@ -11,12 +11,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
 
-<!-- 공통 스타일. 뒤의 ?v=1 은 캐시 때문에 붙인 것 —
-     style.css 를 고쳤는데 화면이 안 바뀌면 v=2, v=3 으로 올리면 된다. -->
-<link rel="stylesheet" href="style.css?v=1">
+<!-- 공통 스타일. style.css 를 고쳤는데 화면이 안 바뀌면
+     아래 v=2 를 v=3 으로 올리면 된다. -->
+<link rel="stylesheet" href="style.css?v=2">
 
 <style>
-/* 이 페이지에서만 쓰는 것들 */
+/* 이 페이지에서만 쓰는 것들 — 부팅 연출 */
 
 /* ---------- 부팅 로그 화면 ----------
    초록 단말기가 아니라 일부러 회색 CMD 톤으로 간다.
@@ -89,45 +89,6 @@
   100%{ transform:scaleY(1)    scaleX(1);   filter:brightness(1); }
 }
 
-/* ---------- 항목 목록 ---------- */
-.item{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  width:100%;
-  padding:11px 12px;
-  border:none;
-  background:none;
-  color:inherit;
-  font:inherit;
-  text-align:left;
-  cursor:pointer;
-  border-left:3px solid transparent;
-}
-.item.locked{ color:var(--phos-dim); }
-.item.locked.sel{ background:var(--phos-dim); color:var(--screen); }
-.item.done{ color:var(--phos-dim); cursor:not-allowed; }
-
-.num{ font-size:12px; opacity:.75; width:28px; flex:none; }
-.body-txt{ flex:1; min-width:0; }
-.t{ font-size:17px; }
-.d{ font-size:12px; opacity:.8; font-family:var(--kor); margin-top:2px; }
-.tag{ font-size:12px; flex:none; }
-
-/* ---------- 하단 ---------- */
-.bottom{
-  margin-top:16px;
-  padding-top:10px;
-  border-top:1px solid var(--phos-dim);
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:12px;
-  font-size:12px;
-  color:var(--phos-mid);
-  flex-wrap:wrap;
-}
-
 @media (prefers-reduced-motion: reduce){
   .caret{ animation:none; }
   .screen.on.tv{ animation:none; }
@@ -135,7 +96,6 @@
 }
 
 @media (max-width:420px){
-  .t{ font-size:15px; }
   .bootscreen{ font-size:11px; }
 }
 </style>
@@ -181,8 +141,18 @@
     <span class="tag">[Execute]</span>
   </button>
 
-  <button class="item locked" data-go="schedule.html">
+  <!-- 새로 추가한 잡동사니 칸 -->
+  <button class="item" data-go="misc.html">
     <span class="num">003</span>
+    <span class="body-txt">
+      <span class="t">MISC</span>
+      <span class="d">Random small junk to mess with</span>
+    </span>
+    <span class="tag">[Execute]</span>
+  </button>
+
+  <button class="item locked" data-go="schedule.html">
+    <span class="num">004</span>
     <span class="body-txt">
       <span class="t">██████</span>
       <span class="d">No Permission</span>
@@ -233,7 +203,7 @@ const SEQ = [
   ['line', '7 audio files indexed'],
   ['line', ''],
 
-  ['type', 'C:\\NV> decrypt entry_003'],
+  ['type', 'C:\\NV> decrypt entry_004'],
   ['wait', PROMPT_WAIT],
   ['line', 'decrypting ............. FAILED', 'warn'],
   ['line', 'WARNING: 1 entry remains locked dont mind that plz', 'warn'],
@@ -256,7 +226,7 @@ const screenEl   = document.getElementById('screen');
 const noMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* 이 탭에서 이미 부팅을 봤는지 확인.
-   sessionStorage 는 탭을 닫으면 사라져서, songs 갔다 돌아올 땐 생략된다.
+   sessionStorage 는 탭을 닫으면 사라져서, 다른 페이지 갔다 돌아올 땐 생략된다.
    (localStorage 를 쓰면 영원히 안 나오니까 일부러 이걸 씀) */
 let alreadyBooted = false;
 try{ alreadyBooted = sessionStorage.getItem('nv-booted') === '1'; }catch(e){}
