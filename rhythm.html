@@ -263,7 +263,8 @@ const CFG = {
   V_GREAT:   200,
   V_GOOD:    100,
 
-  LEAD: 1.6,         // 곡 시작 전 대기 시간(초)
+  LEAD: 3.4,         // 곡 시작 전 대기 시간(초). 3.4 면 3·2·1 이 또렷하게 나온다
+  HOLD: 0.02,        // 음악이 실제로 나올 때까지 시계를 붙잡아 두는 지점(초)
   CAL_PERIOD: 0.6,   // 오프셋 측정용 딸깍 간격(초)
 
   SAVE: 'nv-rhythm-cfg'
@@ -394,6 +395,7 @@ let notes = [];        // { t, lane, hit }
 let cursor = 0;        // 아직 처리 안 된 첫 노트
 let playing = false;
 let startPerf = 0;     // 카운트다운 기준
+let audioStarted = false;   // 음악이 실제로 흘러나오기 시작했는지
 let tally = { perfect:0, great:0, good:0, miss:0 };
 let combo = 0, maxCombo = 0, score = 0;
 let lanePress = [0,0,0,0];    // 건반 눌림 잔상
@@ -473,16 +475,23 @@ async function start(){
   audio.currentTime = 0;
 
   playing = true;
+  audioStarted = false;
   startPerf = performance.now();
 
-  // 시작 직전까지는 음악이 아직 안 나오므로 가상 시계를 쓴다
+  // 카운트다운 동안은 음악이 없으므로 가상 시계로 센다
   baseMedia = -CFG.LEAD;
   basePerf = startPerf;
+
+  // 카운트다운 소리를 미리 예약해둔다
+  if(actx){
+    const b = actx.currentTime;
+    for(let i = 3; i >= 1; i--) beep(b + (CFG.LEAD - i), 900, 0.22);
+    beep(b + CFG.LEAD, 1500, 0.28);
+  }
 
   setTimeout(() => {
     if(!playing) return;
     audio.play().catch(() => {});
-    syncClock();
   }, CFG.LEAD * 1000);
 }
 
@@ -712,7 +721,25 @@ function frame(){
   requestAnimationFrame(frame);
   if(scene !== 'sPlay' || !W) return;
 
-  syncClock();
+  /* ★ 음악이 실제로 나오기 전까지 시계를 0 직전에 붙잡아 둔다.
+
+     audio.play() 를 부른다고 소리가 바로 나오지 않는다.
+     버퍼를 채우고 출력 장치를 여는 데 50~200ms 가 걸린다.
+     그 사이에 시계를 그냥 흘려보내면, 음악은 아직인데
+     노트만 판정선을 지나가서 맨 앞이 통째로 MISS 가 된다. */
+  if(playing && !audioStarted){
+    if(audio.currentTime > 0.001){
+      audioStarted = true;
+      baseMedia = audio.currentTime;
+      basePerf = performance.now();
+    }else if(songTime() > -CFG.HOLD){
+      baseMedia = -CFG.HOLD;
+      basePerf = performance.now();
+    }
+  }else{
+    syncClock();
+  }
+
   const t = songTime();
 
   if(playing){
@@ -791,13 +818,23 @@ function frame(){
     if(f.a <= 0) hitFx.splice(i, 1);
   }
 
-  /* ---------- 카운트다운 ---------- */
+  /* ---------- 카운트다운 3 · 2 · 1 ---------- */
   if(t < 0){
-    g.fillStyle = color.amber;
-    g.font = '40px "Share Tech Mono", monospace';
-    g.textAlign = 'center';
-    g.fillText(String(Math.ceil(-t)), W/2, lineY - 60);
-    g.textAlign = 'left';
+    const n = Math.ceil(-t);
+    if(n <= 3){
+      // 숫자가 바뀐 직후엔 크고 진하게, 1초에 걸쳐 잦아든다
+      const frac = (-t) - Math.floor(-t);      // 0 → 1
+      g.save();
+      g.globalAlpha = 0.35 + frac * 0.65;
+      g.fillStyle = color.amber;
+      g.font = (52 + frac * 16) + 'px "Share Tech Mono", monospace';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(String(n), W / 2, lineY * 0.52);
+      g.restore();
+      g.textAlign = 'left';
+      g.textBaseline = 'alphabetic';
+    }
   }
 
   if(audio.duration) $('pProg').style.width = Math.max(0, t / audio.duration * 100) + '%';
@@ -900,8 +937,9 @@ $('listBtn').addEventListener('click', () => go('sTitle'));
 $('retryBtn').addEventListener('click', start);
 
 audio.addEventListener('error', () => {
-  if(scene === 'sPlay'){ playing = false; }
-  $('msg1').textContent = 'mp3 를 못 찾았다: ' + audio.src;
+  const src = audio.src;
+  if(scene === 'sPlay') stop(false);          // 음악이 없으면 시계가 영영 안 풀린다
+  $('msg1').textContent = 'mp3 를 못 찾았다: ' + src;
 });
 </script>
 </body>
