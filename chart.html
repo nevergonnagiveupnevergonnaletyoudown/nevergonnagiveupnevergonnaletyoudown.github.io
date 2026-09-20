@@ -107,6 +107,7 @@ textarea{ width:100%; height:90px; resize:vertical; font-size:11px; }
     <span class="lbl">OFFSET</span>
     <input type="number" id="offset" value="0" step="0.001">
     <button class="btn" id="offBtn">SET HERE</button>
+    <button class="btn amber" id="detBtn">DETECT A~B</button>
   </div>
 
   <!-- ---------- 3줄: 찍기 설정 ---------- -->
@@ -668,6 +669,174 @@ async function getBuffer(){
   return buf;
 }
 
+/* ---------- 구간의 변화량 곡선을 구한다 ----------
+   자동 생성과 BPM 측정이 같이 쓴다. */
+function fluxOf(buf, A, B, wantCentroid){
+  const sr = buf.sampleRate;
+  const N = CFG.AUTO_FFT, HOP = CFG.AUTO_HOP;
+
+  const ch0 = buf.getChannelData(0);
+  const ch1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
+
+  const from = Math.max(0, Math.floor((A - 0.3) * sr));
+  const to   = Math.min(buf.length, Math.ceil((B + 0.3) * sr));
+
+  const win = new Float32Array(N);
+  for(let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+
+  const re = new Float32Array(N), im = new Float32Array(N);
+  const prev = new Float32Array(N / 2);
+  const flux = [], cent = [];
+
+  for(let s = from; s + N < to; s += HOP){
+    for(let i = 0; i < N; i++){
+      const v = ch1 ? (ch0[s+i] + ch1[s+i]) * 0.5 : ch0[s+i];
+      re[i] = v * win[i];
+      im[i] = 0;
+    }
+    fft(re, im);
+
+    let sum = 0, wsum = 0, msum = 0;
+    for(let k = 1; k < N / 2; k++){
+      const mag = Math.sqrt(re[k]*re[k] + im[k]*im[k]);
+      const d = mag - prev[k];
+      if(d > 0) sum += d;                // 커진 것만. 줄어든 건 무시
+      prev[k] = mag;
+
+      if(wantCentroid){
+        const f = k * sr / N;
+        if(f >= CFG.AUTO_LO && f <= CFG.AUTO_HI){ wsum += f * mag; msum += mag; }
+      }
+    }
+    flux.push(sum);
+    cent.push(msum > 0 ? wsum / msum : CFG.AUTO_LO);
+  }
+
+  return { flux: flux, cent: cent, t0: from / sr, fps: sr / HOP };
+}
+
+/* 국소 평균을 빼서 "조용한 데는 다 놓치고 시끄러운 데는 다 걸리는" 편향을 없앤다 */
+function sharpen(flux, w){
+  const out = new Float32Array(flux.length);
+  let mx = 0;
+  for(let i = 0; i < flux.length; i++){
+    let s = 0, c = 0;
+    for(let j = Math.max(0, i - w); j <= Math.min(flux.length - 1, i + w); j++){ s += flux[j]; c++; }
+    const v = Math.max(0, flux[i] - s / c);
+    out[i] = v;
+    if(v > mx) mx = v;
+  }
+  if(mx > 0) for(let i = 0; i < out.length; i++) out[i] /= mx;
+  return out;
+}
+
+
+/* =========================================================
+   BPM / OFFSET 자동 측정
+
+   격자를 후보 BPM 마다 깔아보고, 격자 선 위에 변화량이
+   가장 많이 얹히는 조합을 고른다. 맞는 BPM 이면 박자가
+   격자에 딱 올라타서 점수가 튄다.
+   ========================================================= */
+function gridScore(f, fps, t0, bpm, off, A, B){
+  const beat = 60 / bpm;
+  const k0 = Math.ceil((A - off) / beat);
+  const k1 = Math.floor((B - off) / beat);
+  if(k1 <= k0) return 0;
+
+  let sum = 0, n = 0;
+  for(let k = k0; k <= k1; k++){
+    const idx = (off + k * beat - t0) * fps;
+    const i = Math.floor(idx);
+    if(i < 0 || i + 1 >= f.length) continue;
+    const fr = idx - i;
+    sum += f[i] * (1 - fr) + f[i+1] * fr;
+    n++;
+  }
+  return n ? sum / n : 0;
+}
+
+async function detectTempo(){
+  ensureCtx();
+  if(!actx){ say('이 브라우저에서는 안 된다'); return; }
+  if(actx.state === 'suspended') await actx.resume();
+
+  const A = Number($('rStart').value), B = Number($('rEnd').value);
+  if(!(B - A >= 8)){ say('구간이 너무 짧다. 최소 8초는 잡아라'); return; }
+
+  $('detBtn').disabled = true;
+  say('측정 중...');
+
+  try{
+    const buf = await getBuffer();
+    await new Promise(r => setTimeout(r, 30));
+
+    const a = fluxOf(buf, A, B, false);
+    const f = sharpen(a.flux, CFG.AUTO_WIN * 3);
+
+    /* 후보 주변을 촘촘히 훑어 최적점을 찾는다 */
+    const fine = (c, span, step) => {
+      let b = { s: -1, bpm: c, off: A };
+      for(let bpm = c - span; bpm <= c + span; bpm += step){
+        if(bpm < 40) continue;
+        const beat = 60 / bpm;
+        for(let o = 0; o < beat; o += 0.002){
+          const s = gridScore(f, a.fps, a.t0, bpm, A + o, A, B);
+          if(s > b.s) b = { s: s, bpm: bpm, off: A + o };
+        }
+      }
+      return b;
+    };
+
+    // 1차: 넓게 훑는다
+    let best = { s: -1, bpm: 120, off: A };
+    for(let bpm = 60; bpm <= 240; bpm += 0.25){
+      const beat = 60 / bpm;
+      for(let o = 0; o < beat; o += beat / 40){
+        const s = gridScore(f, a.fps, a.t0, bpm, A + o, A, B);
+        if(s > best.s) best = { s: s, bpm: bpm, off: A + o };
+      }
+    }
+
+    // 2차: 그 주변만 촘촘히
+    best = fine(best.bpm, 0.6, 0.01);
+
+    /* ---------- 3차: 배수 접기 ----------
+       ★ 이걸 안 하면 거의 항상 절반 값이 나온다.
+         느린 격자는 강한 박자만 골라 밟기 때문에
+         "격자 한 칸당 평균 점수"가 오히려 높게 나온다.
+         그래서 2배로 늘려봤을 때 점수가 크게 안 떨어지면
+         사실 그쪽이 진짜 박자다. */
+    const FOLD = 0.55;
+    for(let i = 0; i < 3; i++){
+      const c = best.bpm * 2;
+      if(c > 240) break;
+      const b2 = fine(c, 0.8, 0.01);
+      if(b2.s >= best.s * FOLD || best.bpm < 100) best = b2;
+      else break;
+    }
+
+    // 오프셋을 곡 맨 앞 기준으로 되돌린다 (격자는 offset + n*beat 이므로)
+    const beat = 60 / best.bpm;
+    const off0 = ((best.off % beat) + beat) % beat;
+
+    $('bpm').value = best.bpm.toFixed(2);
+    $('offset').value = off0.toFixed(3);
+    readInputs();
+
+    say('BPM ' + best.bpm.toFixed(2) + ' / offset ' + off0.toFixed(3)
+        + ' · 선명도 ' + best.s.toFixed(3) + (best.s < 0.12 ? ' (낮다 — 구간을 바꿔봐라)' : ''));
+
+  }catch(err){
+    say('실패: ' + err.message);
+  }finally{
+    $('detBtn').disabled = false;
+  }
+}
+
+$('detBtn').addEventListener('click', detectTempo);
+
+
 async function autoGen(){
   ensureCtx();
   if(!actx){ say('이 브라우저에서는 자동 생성이 안 된다'); return; }
@@ -685,50 +854,9 @@ async function autoGen(){
     await new Promise(r => setTimeout(r, 30));      // 화면이 멈춘 것처럼 보이지 않게
     say('분석 중...');
 
-    const sr = buf.sampleRate;
-    const N = CFG.AUTO_FFT;
-    const HOP = CFG.AUTO_HOP;
-
-    /* 채널을 하나로 합친다. 스테레오면 좌우 평균 */
-    const ch0 = buf.getChannelData(0);
-    const ch1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
-
-    // 분석 구간 (앞뒤로 조금 여유를 둔다)
-    const from = Math.max(0, Math.floor((A - 0.2) * sr));
-    const to   = Math.min(buf.length, Math.ceil((B + 0.2) * sr));
-
-    // 미리 계산해두는 창 함수 — 토막 가장자리를 부드럽게 깎는다
-    const win = new Float32Array(N);
-    for(let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
-
-    const re = new Float32Array(N);
-    const im = new Float32Array(N);
-    const prev = new Float32Array(N / 2);
-
-    const flux = [];      // 토막별 변화량
-    const cent = [];      // 토막별 무게중심 주파수 (레인 정하는 데 씀)
-
-    for(let s = from; s + N < to; s += HOP){
-      for(let i = 0; i < N; i++){
-        const v = ch1 ? (ch0[s+i] + ch1[s+i]) * 0.5 : ch0[s+i];
-        re[i] = v * win[i];
-        im[i] = 0;
-      }
-      fft(re, im);
-
-      let sum = 0, wsum = 0, msum = 0;
-      for(let k = 1; k < N / 2; k++){
-        const mag = Math.sqrt(re[k]*re[k] + im[k]*im[k]);
-        const d = mag - prev[k];
-        if(d > 0) sum += d;                 // 커진 것만 센다. 줄어든 건 무시
-        prev[k] = mag;
-
-        const f = k * sr / N;
-        if(f >= CFG.AUTO_LO && f <= CFG.AUTO_HI){ wsum += f * mag; msum += mag; }
-      }
-      flux.push(sum);
-      cent.push(msum > 0 ? wsum / msum : CFG.AUTO_LO);
-    }
+    /* 변화량 곡선을 구한다 (레인 배치용 무게중심도 같이) */
+    const a = fluxOf(buf, A, B, true);
+    const flux = a.flux, cent = a.cent;
 
     /* ---------- 봉우리 찾기 ----------
        고정된 기준값을 쓰면 조용한 부분은 다 놓치고
@@ -749,7 +877,7 @@ async function autoGen(){
       const mean = sum / cnt;
       if(mean <= 0 || flux[i] < mean * SENS) continue;
 
-      const t = (from + i * HOP) / sr;
+      const t = a.t0 + i / a.fps;
       if(t < A || t > B) continue;
       if(t - lastT < minGap) continue;
 
@@ -759,17 +887,33 @@ async function autoGen(){
 
     /* ---------- 레인 배치 ----------
        낮은 소리는 왼쪽, 높은 소리는 오른쪽.
-       사람이 치기 편하고 곡이랑도 자연스럽게 맞는다. */
-    const lo = Math.log(CFG.AUTO_LO), hi = Math.log(CFG.AUTO_HI);
+
+       ★ 주파수 절대값으로 나누면 안 된다.
+         꽉 찬 곡은 무게중심이 죄다 2~3kHz 에 몰려서
+         전부 오른쪽 레인 하나로 쏠린다.
+         그래서 "이 곡 안에서 몇 등인가"(순위)로 나눈다.
+         그러면 네 레인에 고르게 퍼진다. */
+    const sorted = hits.map(h => h[1]).sort((p, q) => p - q);
+    const rankOf = c => {
+      let lo = 0, hi = sorted.length;
+      while(lo < hi){ const m = (lo + hi) >> 1; if(sorted[m] < c) lo = m + 1; else hi = m; }
+      return sorted.length ? lo / sorted.length : 0;
+    };
+
     const made = [];
     let prevLane = -1;
 
     for(const [t, c] of hits){
-      const r = (Math.log(Math.min(CFG.AUTO_HI, Math.max(CFG.AUTO_LO, c))) - lo) / (hi - lo);
-      let lane = Math.min(CFG.LANES - 1, Math.floor(r * CFG.LANES));
+      let lane = Math.min(CFG.LANES - 1, Math.floor(rankOf(c) * CFG.LANES));
 
-      // 같은 레인이 연달아 나오면 한 칸 옆으로. 연타보다 번갈아 치는 게 훨씬 낫다
-      if(lane === prevLane) lane = (lane + 1) % CFG.LANES;
+      /* 같은 레인 연타는 재미없으니 한 칸 옆으로 민다.
+         ★ 끝 레인에서 반대쪽 끝으로 넘기면(3→0) 손이 건반을 가로지른다.
+           그래서 가장자리는 안쪽으로만 민다. */
+      if(lane === prevLane){
+        if(lane === 0) lane = 1;
+        else if(lane === CFG.LANES - 1) lane = CFG.LANES - 2;
+        else lane = lane + 1;
+      }
       prevLane = lane;
 
       made.push([snap(t), lane]);
