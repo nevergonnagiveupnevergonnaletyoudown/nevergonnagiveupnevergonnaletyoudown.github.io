@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NV / ORIGIN</title>
+<meta property="og:title" content="NV — ORIGIN">
+<meta property="og:description" content="entry 000">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css?v=3">
+<script src="fx.js?v=1" defer></script>
+
+<style>
+/* 이 페이지에서만 쓰는 것들 */
+
+/* 명령어 줄. 목록의 > 표시와 톤을 맞춘다 */
+.cmd{
+  margin-top:22px;
+  font-size:13px;
+  color:var(--phos);
+}
+.cmd:first-of-type{ margin-top:14px; }
+
+/* 명령어 아래 붙는 내용. 들여쓰기로 계층을 만든다 */
+.out{
+  margin:6px 0 0;
+  padding-left:16px;
+  border-left:1px solid var(--phos-dim);
+  font-family:var(--kor);
+  font-size:13px;
+  line-height:1.85;
+  color:var(--phos-mid);
+}
+.out b{ color:var(--phos); font-weight:400; }      /* 강조는 굵기 말고 밝기로 */
+.out .dim{ color:var(--phos-dim); }
+
+/* 점선으로 이어지는 목록 (skills 칸) */
+.kv{ display:flex; gap:8px; align-items:baseline; }
+.kv .k{ flex:none; }
+.kv .dots{
+  flex:1;
+  border-bottom:1px dotted var(--phos-dim);
+  transform:translateY(-4px);
+}
+.kv .v{ flex:none; color:var(--phos); }
+
+/* 공통 .btn 은 <button> 기준이라 display 가 없다.
+   <a> 에 그대로 쓰면 위아래 padding 이 무시돼서 납작해진다. */
+a.btn{
+  display:inline-block;
+  text-decoration:none;
+}
+
+/* 맨 아래 줄 */
+.tail{
+  margin-top:26px;
+  padding-top:14px;
+  border-top:1px solid var(--phos-dim);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+@media (max-width:520px){
+  .out{ font-size:12px; }
+}
+</style>
+</head>
+<body>
+
+<main class="screen">
+
+  <div class="top">
+    <div class="ttl">ORIGIN</div>
+    <a class="back" href="index.html">◀ BACK</a>
+  </div>
+
+  <div class="head">&gt; entry 000 — undocumented</div>
+
+  <!-- =========================================================
+       ★ 글은 여기부터 아래까지가 전부다. 마음대로 고쳐라.
+         .cmd  = 초록색 명령어 줄
+         .out  = 그 아래 들여쓰기된 내용
+         <b>   = 한 단계 밝게 (강조)
+         .dim  = 한 단계 어둡게 (덜 중요한 것)
+       ========================================================= -->
+
+  <div class="cmd">&gt; whoami</div>
+  <div class="out">
+    too lazy to do anything productive,<br>
+    too much free time to do nothing.<br>
+    <span class="dim">so this happened.</span>
+  </div>
+
+  <div class="cmd">&gt; history --first</div>
+  <div class="out">
+    this whole site started as <b>a rickroll</b>.<br>
+    that one is still up there. it never left.<br>
+    <span class="dim">the one down here is the second.</span>
+  </div>
+
+  <div class="cmd">&gt; skills --list</div>
+  <div class="out">
+    <div class="kv"><span class="k">CSS</span><span class="dots"></span><span class="v">still no idea</span></div>
+    <div class="kv"><span class="k">git pull</span><span class="dots"></span><span class="v">what is that</span></div>
+    <div class="kv"><span class="k">Claude</span><span class="dots"></span><span class="v">did most of this</span></div>
+    <span class="dim">god bless capitalism.</span>
+  </div>
+
+  <div class="cmd">&gt; cat song_list/*</div>
+  <div class="out">
+    every track is <b>exactly my taste</b>.<br>
+    <span class="dim">no apologies. turn 003 down though.</span>
+  </div>
+
+  <div class="tail">
+    <!-- ★ 두 번째 릭롤. 여기가 그 "두 번째"다. -->
+    <a class="btn" href="https://www.youtube.com/watch?v=dQw4w9WgXcQ">[ RESTORE ORIGINAL ]</a>
+    <span class="dim" style="font-size:11px;color:var(--phos-dim)">000 / END OF ENTRY</span>
+  </div>
+
+</main>
+
+</body>
+</html>

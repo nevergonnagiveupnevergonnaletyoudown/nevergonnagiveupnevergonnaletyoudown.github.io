@@ -102,6 +102,22 @@
 @media (max-width:420px){
   .bootscreen{ font-size:11px; }
 }
+
+/* ---------- 숨겨진 000 항목 ----------
+   .item 에 display:flex 가 걸려 있어서, 그냥 .secret 만 쓰면
+   누가 이기는지 애매해진다. 클래스 두 개를 붙여 확실히 이기게 함. */
+.item.secret{ display:none; }
+
+/* 풀렸을 때 한 번 번쩍이는 연출 */
+.item.reveal{ animation:revealIn .9s ease-out; }
+@keyframes revealIn{
+  0%  { opacity:0; transform:translateX(-10px); color:var(--amber); }
+  40% { opacity:1; color:var(--amber); }
+  100%{ opacity:1; transform:none; }
+}
+@media (prefers-reduced-motion: reduce){
+  .item.reveal{ animation:none; }
+}
 </style>
 </head>
 <body>
@@ -126,6 +142,18 @@
   </div>
 
   <div class="head">&gt; Archived Projects</div>
+
+  <!-- 숨겨진 항목. 암호를 치기 전까진 .secret 때문에 안 보인다.
+       화면에 안 보여도 HTML 소스에는 남아 있으니,
+       소스 뒤져보는 사람한텐 어차피 들킨다. 그건 그거대로 상관없음. -->
+  <button class="item secret" id="secretItem" data-go="origin.html">
+    <span class="num">000</span>
+    <span class="body-txt">
+      <span class="t">ORIGIN</span>
+      <span class="d">why this thing exists</span>
+    </span>
+    <span class="tag">[Execute]</span>
+  </button>
 
   <button class="item" data-go="songs.html">
     <span class="num">001</span>
@@ -334,12 +362,22 @@ if(alreadyBooted || noMotion){
 /* =========================================================
    목록 — 키보드로 위아래 이동
    ========================================================= */
-const items = Array.from(document.querySelectorAll('.item:not([disabled])'));
+/* 숨겨진 항목이 나중에 합류할 수 있어서 const 가 아니라 let 이다.
+   .secret 이 붙어 있는 동안은 목록에서 빠진다. */
+let items = [];
 let sel = 0;
+
+function refreshItems(){
+  const keep = items[sel];        // 보고 있던 줄을 기억해둔다
+  items = Array.from(document.querySelectorAll('.item:not([disabled]):not(.secret)'));
+  const i = items.indexOf(keep);
+  sel = i >= 0 ? i : 0;           // 못 찾으면 맨 위로
+}
+refreshItems();
 
 function draw(){
   document.querySelectorAll('.item').forEach(el => el.classList.remove('sel'));
-  items[sel].classList.add('sel');
+  if(items[sel]) items[sel].classList.add('sel');
 }
 draw();
 
@@ -351,6 +389,7 @@ function move(step){
 /* open 이라는 이름은 브라우저에 이미 window.open 으로 있어서
    그대로 쓰면 덮어써버린다. 그래서 다른 이름을 쓴다. */
 function openSelected(){
+  if(!items[sel]) return;
   const url = items[sel].dataset.go;
   if(url) window.location.href = url;
 }
@@ -362,10 +401,74 @@ document.addEventListener('keydown', e => {
   if(e.key === 'Enter'){ openSelected(); }
 });
 
-items.forEach((el, i) => {
-  el.addEventListener('mouseenter', () => { sel = i; draw(); });
-  el.addEventListener('click', () => { sel = i; openSelected(); });
+/* 숨은 항목에도 미리 달아둔다. 순서(i)를 고정해서 기억하면
+   나중에 목록이 바뀌었을 때 엉뚱한 줄이 열린다.
+   그래서 누를 때마다 indexOf 로 지금 위치를 다시 찾는다. */
+document.querySelectorAll('.item').forEach(el => {
+  el.addEventListener('mouseenter', () => {
+    const i = items.indexOf(el);
+    if(i >= 0){ sel = i; draw(); }
+  });
+  el.addEventListener('click', () => {
+    const i = items.indexOf(el);
+    if(i >= 0){ sel = i; openSelected(); }
+  });
 });
+
+
+/* =========================================================
+   숨겨진 항목 — 아무 데서나 CODE 를 타이핑하면 열린다
+
+   ★ capture: true 가 핵심이다.
+     부팅 스킵 함수(skip)가 stopImmediatePropagation 으로
+     키 이벤트를 끊어버리기 때문에, 평범하게 달면
+     부팅 중에 친 글자는 여기까지 오지도 못한다.
+     capture 는 이벤트가 내려갈 때 먼저 잡는 단계라서
+     끊기기 전에 글자를 받아낼 수 있다.
+   ========================================================= */
+const CODE = 'origin';
+let buf = '';
+
+function unlock(animate){
+  const el = document.getElementById('secretItem');
+  if(!el || !el.classList.contains('secret')) return;   // 이미 열려 있음
+
+  el.classList.remove('secret');
+  if(animate) el.classList.add('reveal');
+
+  refreshItems();
+  if(animate){
+    sel = items.indexOf(el);        // 방금 찾았으면 거기에 커서를 둔다
+    draw();
+  }
+
+  /* 한 번 찾으면 계속 열어둔다.
+     sessionStorage 를 쓰면 탭 닫을 때마다 다시 찾아야 해서
+     여기선 영구 보관인 localStorage 를 쓴다. */
+  try{ localStorage.setItem('nv-origin', '1'); }catch(e){}
+}
+
+// 예전에 찾은 적 있으면 조용히 열어둔다
+try{ if(localStorage.getItem('nv-origin') === '1') unlock(false); }catch(e){}
+
+document.addEventListener('keydown', e => {
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  if(e.key.length !== 1) return;                 // 화살표, Enter 같은 건 무시
+
+  // 최근 친 글자만 CODE 길이만큼 들고 있는다
+  buf = (buf + e.key.toLowerCase()).slice(-CODE.length);
+  if(buf === CODE) unlock(true);
+}, true);
+
+
+/* ---------- F12 콘솔에 남기는 힌트 ----------
+   %c 는 뒤에 오는 문자열을 CSS 로 꾸며준다는 뜻이다. */
+console.log('%c NV TERMINAL ',
+  'background:#2CFF88;color:#030A06;font-weight:bold;padding:2px 6px');
+console.log('%c> ls -a',            'color:#17B85F');
+console.log('%c  4 entries shown. 5 exist.', 'color:#0C7A3E');
+console.log('%c  the missing one is where all of this started.', 'color:#0C7A3E');
+console.log('%c  six letters. just type it.', 'color:#FFB63C');
 
 
 /* =========================================================
