@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NV / RHYTHM</title>
+<meta property="og:title" content="NV — RHYTHM">
+<meta property="og:description" content="4K">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css?v=3">
+<!-- fx.js 는 일부러 안 붙였다. 플레이 중에 화면이 흔들리면 판정에 방해된다. -->
+
+<style>
+body{ align-items:center; padding:10px; }
+
+.panel{
+  width:min(860px, 100%);
+  background:var(--screen);
+  border:2px solid var(--phos-dim);
+  border-radius:12px;
+  padding:14px 16px 16px;
+  text-shadow:0 0 6px currentColor;
+}
+
+/* ---------- 화면 전환 ---------- */
+.scene{ display:none; }
+.scene.on{ display:block; }
+
+/* ---------- 곡 목록 ---------- */
+.pick{
+  display:flex; align-items:center; gap:12px;
+  width:100%; padding:11px 12px;
+  border:none; border-left:3px solid transparent;
+  background:none; color:inherit; font:inherit; text-align:left; cursor:pointer;
+}
+.pick.sel{ border-left-color:var(--phos); background:rgba(44,255,136,.10); }
+.pick .t{ flex:1; font-size:15px; }
+.pick .d{ font-size:11px; color:var(--phos-dim); border:1px solid var(--phos-dim); padding:1px 6px; }
+.pick .n{ font-size:12px; color:var(--phos-mid); width:64px; text-align:right; }
+
+/* ---------- 설정 ---------- */
+.row{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:7px 0; border-bottom:1px solid rgba(12,122,62,.4);
+}
+.row:last-child{ border-bottom:none; }
+.lbl{ font-size:11px; color:var(--phos-dim); letter-spacing:.06em; width:92px; flex:none; }
+
+input[type=range]{ flex:1; min-width:120px; accent-color:var(--phos); }
+input[type=number]{
+  font:inherit; font-size:13px; width:82px;
+  background:#031008; color:var(--phos); border:1px solid var(--phos-dim); padding:3px 6px;
+}
+.val{ font-size:13px; width:74px; text-align:right; }
+.btn.on{ background:var(--phos); color:var(--screen); text-shadow:none; }
+
+/* ---------- 게임 화면 ---------- */
+.hud{
+  display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  font-size:12px; color:var(--phos-mid); margin-bottom:6px;
+}
+.hud .score{ font-size:20px; color:var(--phos); }
+
+.stage{
+  position:relative;
+  display:flex; align-items:stretch; gap:14px;
+}
+#field{ display:block; flex:none; }
+
+/* 판정 · 콤보 — 네 그림처럼 필드 오른쪽에 둔다 */
+.side{
+  flex:1; min-width:0;
+  display:flex; flex-direction:column; justify-content:center; gap:6px;
+}
+.judge{ font-size:22px; min-height:26px; color:var(--phos); }
+.judge.perfect{ color:var(--phos); }
+.judge.great{ color:var(--phos-mid); }
+.judge.good{ color:var(--amber); text-shadow:0 0 8px var(--amber); }
+.judge.miss{ color:#FF5B4A; text-shadow:0 0 8px #FF5B4A; }
+.combo{ font-size:17px; color:var(--amber); min-height:22px; }
+.acc{ font-size:12px; color:var(--phos-dim); }
+
+/* 좁은 화면에선 필드 위로 올린다 */
+.stage.narrow{ flex-direction:column; gap:4px; align-items:center; }
+.stage.narrow .side{
+  flex:none; width:100%;
+  flex-direction:row; justify-content:center; align-items:baseline; gap:14px;
+}
+
+.prog{ height:5px; background:rgba(12,122,62,.3); border:1px solid var(--phos-dim); margin-top:8px; }
+.prog i{ display:block; height:100%; width:0; background:var(--phos); }
+
+/* ---------- 결과 ---------- */
+.rank{ font-size:56px; line-height:1.1; color:var(--amber); text-shadow:0 0 16px var(--amber); }
+.tally{ display:flex; flex-direction:column; gap:3px; font-size:13px; margin:10px 0; }
+.tally div{ display:flex; gap:10px; }
+.tally .k{ width:84px; color:var(--phos-mid); }
+.tally .v{ color:var(--phos); }
+
+.help{ font-size:11px; color:var(--phos-dim); line-height:1.7; margin-top:10px; }
+.msg{ font-size:12px; color:var(--amber); min-height:16px; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<div class="panel">
+
+<!-- ================= 곡 선택 ================= -->
+<div class="scene on" id="sTitle">
+  <div class="top">
+    <div class="ttl">RHYTHM · 4K</div>
+    <a class="back" href="index.html">◀ BACK</a>
+  </div>
+
+  <div class="head">&gt; select chart</div>
+  <div id="list"></div>
+
+  <div class="row" style="margin-top:10px">
+    <button class="btn" id="startBtn">START</button>
+    <button class="btn" id="cfgBtn">SETTINGS</button>
+    <label class="btn" style="cursor:pointer">
+      LOAD .json<input type="file" id="fileIn" accept=".json" hidden>
+    </label>
+  </div>
+
+  <p class="help">↑↓ 선택 · ENTER 시작</p>
+  <div class="msg" id="msg1"></div>
+</div>
+
+<!-- ================= 설정 ================= -->
+<div class="scene" id="sCfg">
+  <div class="top">
+    <div class="ttl">SETTINGS</div>
+    <button class="back" id="cfgBack">◀ BACK</button>
+  </div>
+
+  <div class="row">
+    <span class="lbl">SPEED</span>
+    <input type="range" id="spd" min="1" max="12" step="1" value="5">
+    <span class="val" id="spdV">5</span>
+  </div>
+
+  <div class="row">
+    <span class="lbl">OFFSET</span>
+    <input type="range" id="off" min="-200" max="200" step="1" value="0">
+    <span class="val" id="offV">0 ms</span>
+  </div>
+  <div class="row">
+    <span class="lbl"></span>
+    <button class="btn amber" id="calBtn">자동 측정</button>
+    <span class="help" style="margin:0">블루투스 이어폰은 소리가 늦게 온다. 꼭 한 번 재라.</span>
+  </div>
+
+  <div class="row">
+    <span class="lbl">KEYS</span>
+    <button class="btn keyb" data-i="0">A</button>
+    <button class="btn keyb" data-i="1">S</button>
+    <button class="btn keyb" data-i="2">;</button>
+    <button class="btn keyb" data-i="3">'</button>
+    <span class="help" id="bindHint" style="margin:0">버튼을 누르고 원하는 키를 쳐라</span>
+  </div>
+
+  <div class="row">
+    <span class="lbl">VOLUME</span>
+    <input type="range" id="vol" min="0" max="100" step="1" value="70">
+    <span class="val" id="volV">70%</span>
+  </div>
+</div>
+
+<!-- ================= 오프셋 측정 ================= -->
+<div class="scene" id="sCal">
+  <div class="top">
+    <div class="ttl">CALIBRATE</div>
+    <button class="back" id="calBack">◀ BACK</button>
+  </div>
+
+  <p class="help" style="font-size:12px">
+    딸깍 소리에 맞춰 아무 키나 계속 눌러라. 16번쯤 누르면 값이 안정된다.<br>
+    정확히 맞추려 애쓰지 말고 평소처럼 편하게 쳐라. 그게 네 버릇까지 같이 잰다.
+  </p>
+
+  <div style="font-size:40px; margin:14px 0" id="calDot">○</div>
+  <div style="font-size:16px" id="calNow">– ms</div>
+  <div class="acc" id="calCnt">0번</div>
+
+  <div class="row" style="margin-top:12px">
+    <button class="btn" id="calStart">START</button>
+    <button class="btn amber" id="calApply">APPLY</button>
+    <button class="btn" id="calReset">RESET</button>
+  </div>
+</div>
+
+<!-- ================= 플레이 ================= -->
+<div class="scene" id="sPlay">
+  <div class="hud">
+    <span id="pTitle">–</span>
+    <span class="score" id="pScore">0</span>
+  </div>
+
+  <div class="stage" id="stage">
+    <canvas id="field"></canvas>
+    <div class="side">
+      <div class="judge" id="pJudge"></div>
+      <div class="combo" id="pCombo"></div>
+      <div class="acc" id="pAcc">100.00%</div>
+    </div>
+  </div>
+
+  <div class="prog"><i id="pProg"></i></div>
+  <p class="help">ESC 그만두기 · 일시정지는 없다</p>
+</div>
+
+<!-- ================= 결과 ================= -->
+<div class="scene" id="sRes">
+  <div class="top">
+    <div class="ttl">RESULT</div>
+    <button class="back" id="resBack">◀ BACK</button>
+  </div>
+
+  <div class="rank" id="rRank">–</div>
+  <div style="font-size:15px; color:var(--phos-mid)" id="rTitle">–</div>
+
+  <div class="tally" id="rTally"></div>
+
+  <div class="row">
+    <button class="btn" id="retryBtn">RETRY</button>
+    <button class="btn" id="listBtn">SELECT</button>
+  </div>
+</div>
+
+</div>
+
+<script>
+/* =========================================================
+   ★ 고치고 싶을 만한 값들
+   ========================================================= */
+const CFG = {
+  LANES: 4,
+  KEYS: ['a','s',';',"'"],       // 기본 키. 설정에서 바꾸면 그게 우선
+
+  /* ---------- 보이는 모양 ---------- */
+  LANE_W: 84,        // 레인 하나 너비(px). 좁힐수록 노트가 정사각형에 가까워진다
+  NOTE_H: 20,        // 노트 높이(px)
+  KEY_H: 68,         // 판정선 아래 건반 칸 높이(px)
+  FIELD_H: 560,      // 필드 전체 높이(px). 화면이 작으면 알아서 줄어든다
+  GAP: 3,            // 레인 사이 여백(px)
+
+  /* ★ 노트 높이는 픽셀 고정이다. 시간 기준으로 잡으면
+     스크롤 속도를 바꿀 때마다 노트가 늘어나거나 납작해진다. */
+
+  /* ---------- 판정 (초) ---------- */
+  PERFECT: 0.040,
+  GREAT:   0.080,
+  GOOD:    0.130,
+  MISS:    0.160,    // 이만큼 지나면 놓친 것으로 확정
+
+  /* ---------- 점수 ---------- */
+  V_PERFECT: 300,
+  V_GREAT:   200,
+  V_GOOD:    100,
+
+  LEAD: 1.6,         // 곡 시작 전 대기 시간(초)
+  CAL_PERIOD: 0.6,   // 오프셋 측정용 딸깍 간격(초)
+
+  SAVE: 'nv-rhythm-cfg'
+};
+
+/* 수록곡. 채보 JSON 은 charts/ 폴더에 둔다. */
+const CHARTS = [
+  { title:'TH99 BOSS BATTLE', diff:'HARD',   file:'charts/06_th06_boss_battle.json' },
+  { title:'TH99 BOSS BATTLE', diff:'NORMAL', file:'charts/06_th06_boss_battle_normal.json' }
+];
+
+const $ = id => document.getElementById(id);
+
+
+/* =========================================================
+   설정 저장
+   ========================================================= */
+let opt = { speed:5, offset:0, vol:70, keys:CFG.KEYS.slice() };
+
+try{
+  const s = JSON.parse(localStorage.getItem(CFG.SAVE) || 'null');
+  if(s) opt = Object.assign(opt, s);
+  // 에디터에서 정해둔 키가 있으면 가져온다
+  if(!s || !s.keys){
+    const k = JSON.parse(localStorage.getItem('nv-chart-keys') || 'null');
+    if(Array.isArray(k) && k.length === CFG.LANES) opt.keys = k;
+  }
+}catch(e){}
+
+function saveOpt(){ try{ localStorage.setItem(CFG.SAVE, JSON.stringify(opt)); }catch(e){} }
+
+/* 스크롤 속도 → 1초에 몇 px 내려오는지 */
+function pps(){ return 160 + opt.speed * 135; }
+
+
+/* =========================================================
+   화면 전환
+   ========================================================= */
+let scene = 'sTitle';
+function go(id){
+  document.querySelectorAll('.scene').forEach(s => s.classList.remove('on'));
+  $(id).classList.add('on');
+  scene = id;
+}
+
+
+/* =========================================================
+   곡 목록
+   ========================================================= */
+let sel = 0;
+
+CHARTS.forEach((c, i) => {
+  const b = document.createElement('button');
+  b.className = 'pick';
+  b.innerHTML = '<span class="n">' + String(i+1).padStart(3,'0') + '</span>'
+              + '<span class="t"></span><span class="d"></span>';
+  b.querySelector('.t').textContent = c.title;
+  b.querySelector('.d').textContent = c.diff;
+  b.addEventListener('mouseenter', () => { sel = i; drawList(); });
+  b.addEventListener('click', () => { sel = i; drawList(); start(); });
+  $('list').appendChild(b);
+});
+
+function drawList(){
+  document.querySelectorAll('.pick').forEach((b, i) => b.classList.toggle('sel', i === sel));
+}
+drawList();
+
+
+/* =========================================================
+   오디오
+   ========================================================= */
+const audio = new Audio();
+audio.preload = 'auto';
+
+let actx = null;
+function ensureCtx(){
+  if(actx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(AC) actx = new AC();
+}
+
+function beep(when, freq, vol){
+  if(!actx) return;
+  const osc = actx.createOscillator(), g = actx.createGain();
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(vol, when);
+  g.gain.exponentialRampToValueAtTime(0.001, when + 0.05);
+  osc.connect(g).connect(actx.destination);
+  osc.start(when); osc.stop(when + 0.06);
+}
+
+
+/* =========================================================
+   시계
+
+   ★ 이 게임에서 제일 중요한 부분이다.
+
+   audio.currentTime 은 브라우저에 따라 초당 4~60번만 갱신된다.
+   그 값을 그대로 쓰면 노트가 뚝뚝 끊겨 보이고 판정도 거칠어진다.
+
+   그래서 "마지막으로 값이 바뀐 순간"을 기억해두고,
+   그 뒤로 흐른 실제 시간을 더해서 쓴다.
+   갱신될 때마다 다시 맞추니까 밀리지도 않는다.
+   ========================================================= */
+let baseMedia = 0;     // 마지막으로 읽은 audio.currentTime
+let basePerf = 0;      // 그때의 performance.now()
+
+function syncClock(){
+  const m = audio.currentTime;
+  if(m !== baseMedia){
+    baseMedia = m;
+    basePerf = performance.now();
+  }
+}
+
+/* perf(ms) 시점의 곡 위치(초). 생략하면 지금 */
+function songTime(perf){
+  return baseMedia + ((perf === undefined ? performance.now() : perf) - basePerf) / 1000;
+}
+
+
+/* =========================================================
+   게임 상태
+   ========================================================= */
+let chart = null;      // { title, notes:[[t,lane],...] }
+let notes = [];        // { t, lane, hit }
+let cursor = 0;        // 아직 처리 안 된 첫 노트
+let playing = false;
+let startPerf = 0;     // 카운트다운 기준
+let tally = { perfect:0, great:0, good:0, miss:0 };
+let combo = 0, maxCombo = 0, score = 0;
+let lanePress = [0,0,0,0];    // 건반 눌림 잔상
+let hitFx = [];               // 판정선에서 터지는 잔상
+let judgeTimer = 0;
+
+
+/* =========================================================
+   채보 불러오기
+   ========================================================= */
+async function loadChart(c){
+  const res = await fetch(c.file);
+  if(!res.ok) throw new Error(c.file + ' 를 못 찾았다 (' + res.status + ')');
+  const j = await res.json();
+  return makeChart(j, c.title + ' / ' + c.diff);
+}
+
+function makeChart(j, title){
+  if(!j || !Array.isArray(j.notes)) throw new Error('채보 형식이 아니다');
+  const ns = j.notes
+    .filter(n => Array.isArray(n) && n.length >= 2)
+    .map(n => ({ t:Number(n[0]), lane:Math.max(0, Math.min(CFG.LANES-1, Number(n[1]))), hit:false }))
+    .sort((a,b) => a.t - b.t);
+  return { title: title || 'CHART', song: j.song || '', notes: ns };
+}
+
+$('fileIn').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      chart = makeChart(JSON.parse(r.result), f.name.replace(/\.json$/, ''));
+      $('msg1').textContent = chart.title + ' · 노트 ' + chart.notes.length + '개 · START 를 눌러라';
+    }catch(err){ $('msg1').textContent = '실패: ' + err.message; }
+  };
+  r.readAsText(f);
+});
+
+
+/* =========================================================
+   시작
+   ========================================================= */
+async function start(){
+  ensureCtx();
+  if(actx && actx.state === 'suspended') await actx.resume();
+
+  try{
+    if(!chart || chart.__from !== sel){
+      $('msg1').textContent = '불러오는 중...';
+      chart = await loadChart(CHARTS[sel]);
+      chart.__from = sel;
+    }
+    if(chart.song){ audio.src = chart.song; audio.load(); }
+  }catch(err){
+    $('msg1').textContent = err.message;
+    return;
+  }
+
+  notes = chart.notes.map(n => ({ t:n.t, lane:n.lane, hit:false }));
+  cursor = 0;
+  tally = { perfect:0, great:0, good:0, miss:0 };
+  combo = 0; maxCombo = 0; score = 0;
+  hitFx = [];
+  lanePress = [0,0,0,0];
+
+  $('pTitle').textContent = chart.title;
+  $('pScore').textContent = '0';
+  $('pJudge').textContent = '';
+  $('pCombo').textContent = '';
+  $('pAcc').textContent = '100.00%';
+
+  go('sPlay');
+  resize();
+
+  audio.volume = opt.vol / 100;
+  audio.currentTime = 0;
+
+  playing = true;
+  startPerf = performance.now();
+
+  // 시작 직전까지는 음악이 아직 안 나오므로 가상 시계를 쓴다
+  baseMedia = -CFG.LEAD;
+  basePerf = startPerf;
+
+  setTimeout(() => {
+    if(!playing) return;
+    audio.play().catch(() => {});
+    syncClock();
+  }, CFG.LEAD * 1000);
+}
+
+
+/* =========================================================
+   판정
+   ========================================================= */
+function judge(lane, perf){
+  const t = songTime(perf) - opt.offset / 1000;    // 귀에 닿는 시각으로 보정
+
+  /* ★ "가장 가까운 노트"가 아니라 "가장 이른 노트"를 잡는다.
+
+     가까운 것을 잡으면, 늦게 친 사람의 입력이 다음 노트에 붙어버린다.
+     그러면 앞 노트는 안 쳤는데 MISS, 뒤 노트는 미리 먹혀서 또 MISS —
+     한 번 늦으면 연쇄로 무너진다.
+     이른 것부터 잡으면 늦어도 앞 노트가 정상 처리된다. */
+  let best = -1;
+  for(let i = cursor; i < notes.length; i++){
+    const n = notes[i];
+    if(n.t - t > CFG.GOOD) break;                  // 아직 한참 남았다
+    if(n.hit || n.lane !== lane) continue;
+    if(t - n.t > CFG.GOOD) continue;               // 이미 너무 지났다
+    best = i;
+    break;
+  }
+
+  lanePress[lane] = 1;
+  if(best < 0) return;                             // 빈 곳을 쳤다 — 벌점 없음
+
+  notes[best].hit = true;
+  const bestD = Math.abs(notes[best].t - t);
+
+  let kind;
+  if(bestD <= CFG.PERFECT) kind = 'perfect';
+  else if(bestD <= CFG.GREAT) kind = 'great';
+  else kind = 'good';
+
+  tally[kind]++;
+  combo++;
+  if(combo > maxCombo) maxCombo = combo;
+
+  const v = kind === 'perfect' ? CFG.V_PERFECT : kind === 'great' ? CFG.V_GREAT : CFG.V_GOOD;
+  score += v + Math.min(combo, 100);
+
+  hitFx.push({ lane:lane, a:1 });
+  showJudge(kind);
+}
+
+function showJudge(kind){
+  const el = $('pJudge');
+  el.className = 'judge ' + kind;
+  el.textContent = kind.toUpperCase();
+  $('pCombo').textContent = combo > 1 ? combo + ' combo!' : '';
+
+  clearTimeout(judgeTimer);
+  judgeTimer = setTimeout(() => { el.textContent = ''; }, 600);
+
+  $('pScore').textContent = score.toLocaleString();
+  $('pAcc').textContent = accuracy().toFixed(2) + '%';
+}
+
+function accuracy(){
+  const done = tally.perfect + tally.great + tally.good + tally.miss;
+  if(!done) return 100;
+  const got = tally.perfect * CFG.V_PERFECT + tally.great * CFG.V_GREAT + tally.good * CFG.V_GOOD;
+  return got / (done * CFG.V_PERFECT) * 100;
+}
+
+/* 놓친 노트 정리 */
+function sweep(t){
+  while(cursor < notes.length){
+    const n = notes[cursor];
+    if(n.hit){ cursor++; continue; }
+    if(t - n.t <= CFG.MISS) break;
+    tally.miss++;
+    combo = 0;
+    showJudge('miss');
+    cursor++;
+  }
+}
+
+
+/* =========================================================
+   입력
+   ========================================================= */
+let bindIdx = -1;
+const RESERVED = [' ', 'escape', 'enter', 'arrowup', 'arrowdown', 'tab'];
+
+function keyLabel(k){ return k === ' ' ? 'SPC' : (k.length === 1 ? k.toUpperCase() : k); }
+
+function drawKeys(){
+  document.querySelectorAll('.keyb').forEach(b => {
+    const i = Number(b.dataset.i);
+    b.textContent = bindIdx === i ? '...' : keyLabel(opt.keys[i]);
+    b.classList.toggle('on', bindIdx === i);
+  });
+}
+drawKeys();
+
+document.querySelectorAll('.keyb').forEach(b => b.addEventListener('click', () => {
+  bindIdx = Number(b.dataset.i);
+  b.blur();                                   // 포커스가 남으면 스페이스가 버튼을 또 누른다
+  $('bindHint').textContent = '원하는 키를 눌러라 (ESC 취소)';
+  drawKeys();
+}));
+
+document.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+
+  if(bindIdx >= 0){
+    e.preventDefault();
+    if(k === 'escape'){ bindIdx = -1; drawKeys(); return; }
+    if(RESERVED.includes(k)){ $('bindHint').textContent = '그 키는 다른 기능이 쓴다'; return; }
+    const dup = opt.keys.indexOf(k);
+    if(dup >= 0 && dup !== bindIdx){ $('bindHint').textContent = '이미 쓰는 키다'; return; }
+    opt.keys[bindIdx] = k;
+    bindIdx = -1; saveOpt(); drawKeys();
+    $('bindHint').textContent = 'OK';
+    return;
+  }
+
+  if(scene === 'sPlay'){
+    if(k === 'escape'){ stop(false); return; }
+    if(e.repeat) return;
+    const lane = opt.keys.indexOf(k);
+    if(lane >= 0){
+      e.preventDefault();
+      /* ★ e.timeStamp 는 키가 실제로 눌린 시각이다.
+         이 함수가 도는 시각을 쓰면 몇 ms 늦게 잡힌다. */
+      judge(lane, e.timeStamp);
+    }
+    return;
+  }
+
+  if(scene === 'sCal'){
+    if(k === 'escape'){ go('sCfg'); return; }
+    if(e.repeat) return;
+    e.preventDefault();
+    calTap(e.timeStamp);
+    return;
+  }
+
+  if(scene === 'sTitle'){
+    if(k === 'arrowdown' || k === 's'){ e.preventDefault(); sel = (sel+1) % CHARTS.length; drawList(); }
+    if(k === 'arrowup'   || k === 'w'){ e.preventDefault(); sel = (sel-1+CHARTS.length) % CHARTS.length; drawList(); }
+    if(k === 'enter'){ e.preventDefault(); start(); }
+  }
+});
+
+document.addEventListener('keyup', e => {
+  const lane = opt.keys.indexOf(e.key.toLowerCase());
+  if(lane >= 0) lanePress[lane] = 0;
+});
+
+
+/* =========================================================
+   끝내기
+   ========================================================= */
+function stop(finished){
+  playing = false;
+  audio.pause();
+
+  if(!finished){ go('sTitle'); return; }
+
+  const acc = accuracy();
+  const rank = acc >= 98 ? 'SS' : acc >= 95 ? 'S' : acc >= 90 ? 'A'
+             : acc >= 80 ? 'B'  : acc >= 70 ? 'C' : 'D';
+
+  $('rRank').textContent = rank;
+  $('rTitle').textContent = chart.title;
+  $('rTally').innerHTML =
+    row('PERFECT', tally.perfect) + row('GREAT', tally.great) +
+    row('GOOD', tally.good) + row('MISS', tally.miss) +
+    row('MAX COMBO', maxCombo) + row('SCORE', score.toLocaleString()) +
+    row('ACCURACY', acc.toFixed(2) + '%');
+  go('sRes');
+
+  function row(k, v){
+    return '<div><span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
+  }
+}
+
+
+/* =========================================================
+   그리기
+   ========================================================= */
+const cv = $('field');
+const g = cv.getContext('2d');
+let W = 0, H = 0, laneW = 0, lineY = 0, color = {};
+
+function readColors(){
+  const cs = getComputedStyle(document.documentElement);
+  const get = (n,d) => (cs.getPropertyValue(n).trim() || d);
+  color = {
+    phos:get('--phos','#2CFF88'), mid:get('--phos-mid','#17B85F'),
+    dim:get('--phos-dim','#0C7A3E'), amber:get('--amber','#FFB63C'),
+    screen:get('--screen','#06160D')
+  };
+}
+readColors();
+
+function resize(){
+  const wrap = $('stage');
+  const avail = wrap.clientWidth || 600;
+
+  // 좁으면 판정 표시를 위로 올린다
+  const narrow = avail < CFG.LANE_W * CFG.LANES + 150;
+  wrap.classList.toggle('narrow', narrow);
+
+  laneW = Math.min(CFG.LANE_W, Math.floor((narrow ? avail : avail - 140) / CFG.LANES) - CFG.GAP);
+  laneW = Math.max(40, laneW);
+
+  W = (laneW + CFG.GAP) * CFG.LANES - CFG.GAP;
+  H = Math.min(CFG.FIELD_H, Math.max(320, window.innerHeight - 210));
+  lineY = H - CFG.KEY_H;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.style.width = W + 'px';
+  cv.style.height = H + 'px';
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+function frame(){
+  requestAnimationFrame(frame);
+  if(scene !== 'sPlay' || !W) return;
+
+  syncClock();
+  const t = songTime();
+
+  if(playing){
+    sweep(t);
+    if(cursor >= notes.length && t > (notes.length ? notes[notes.length-1].t + 1.2 : 0)){
+      stop(true);
+      return;
+    }
+    if(audio.duration && t > audio.duration + 0.3){ stop(true); return; }
+  }
+
+  const speed = pps();
+  g.clearRect(0, 0, W, H);
+
+  /* ---------- 레인 바닥 ---------- */
+  for(let i = 0; i < CFG.LANES; i++){
+    const x = i * (laneW + CFG.GAP);
+    g.fillStyle = 'rgba(6,22,13,.85)';
+    g.fillRect(x, 0, laneW, H);
+    g.strokeStyle = 'rgba(12,122,62,.85)';
+    g.lineWidth = 1;
+    g.strokeRect(x + .5, .5, laneW - 1, H - 1);
+  }
+
+  /* ---------- 건반 칸 (판정선 아래) ---------- */
+  for(let i = 0; i < CFG.LANES; i++){
+    const x = i * (laneW + CFG.GAP);
+    if(lanePress[i] > 0){
+      g.fillStyle = 'rgba(44,255,136,.16)';
+      g.fillRect(x, lineY, laneW, H - lineY);
+    }
+    g.fillStyle = color.dim;
+    g.font = '13px "Share Tech Mono", monospace';
+    g.textAlign = 'center';
+    g.fillText(keyLabel(opt.keys[i]), x + laneW/2, H - 18);
+  }
+  g.textAlign = 'left';
+
+  /* ---------- 노트 ----------
+     ★ 노트의 "가운데"가 판정선에 닿는 순간이 정타다.
+       그래서 높이의 절반만큼 올려 그린다. */
+  const ahead = (lineY + CFG.NOTE_H) / speed;      // 화면에 들어오는 시간 범위
+  for(let i = cursor; i < notes.length; i++){
+    const n = notes[i];
+    if(n.t - t > ahead) break;
+    if(n.hit) continue;
+
+    const y = lineY - (n.t - t) * speed;
+    if(y < -CFG.NOTE_H || y > H) continue;
+
+    const x = i0(n.lane);
+    const top = y - CFG.NOTE_H / 2;
+
+    g.fillStyle = color.phos;
+    g.fillRect(x + 3, top, laneW - 6, CFG.NOTE_H);
+
+    // 윗면을 조금 밝게 해서 납작해 보이지 않게
+    g.fillStyle = 'rgba(255,255,255,.22)';
+    g.fillRect(x + 3, top, laneW - 6, 3);
+  }
+
+  /* ---------- 판정선 ----------
+     그림처럼 레인 밖으로 살짝 삐져나오게 */
+  g.strokeStyle = color.amber;
+  g.lineWidth = 2;
+  g.beginPath(); g.moveTo(-6, lineY); g.lineTo(W + 6, lineY); g.stroke();
+  g.lineWidth = 1;
+
+  /* ---------- 때린 잔상 ---------- */
+  for(let i = hitFx.length - 1; i >= 0; i--){
+    const f = hitFx[i];
+    const x = i0(f.lane);
+    g.fillStyle = 'rgba(44,255,136,' + (f.a * 0.5) + ')';
+    g.fillRect(x, lineY - 26 * f.a, laneW, 26 * f.a);
+    f.a -= 0.08;
+    if(f.a <= 0) hitFx.splice(i, 1);
+  }
+
+  /* ---------- 카운트다운 ---------- */
+  if(t < 0){
+    g.fillStyle = color.amber;
+    g.font = '40px "Share Tech Mono", monospace';
+    g.textAlign = 'center';
+    g.fillText(String(Math.ceil(-t)), W/2, lineY - 60);
+    g.textAlign = 'left';
+  }
+
+  if(audio.duration) $('pProg').style.width = Math.max(0, t / audio.duration * 100) + '%';
+}
+
+function i0(lane){ return lane * (laneW + CFG.GAP); }
+frame();
+
+
+/* =========================================================
+   오프셋 자동 측정
+
+   딸깍 소리를 일정 간격으로 내고, 사용자가 누른 시각이
+   그 간격에서 얼마나 벗어나는지를 잰다.
+   그 값에는 이어폰 지연과 본인 버릇이 같이 들어간다.
+   둘 다 보정 대상이니 한꺼번에 재는 게 맞다.
+   ========================================================= */
+let calOn = false, calT0 = 0, calDeltas = [], calTimer = 0;
+
+function calStart(){
+  ensureCtx();
+  if(!actx){ return; }
+  if(actx.state === 'suspended') actx.resume();
+
+  calOn = true;
+  calDeltas = [];
+  calT0 = performance.now();
+  const ctxT0 = actx.currentTime;
+
+  clearInterval(calTimer);
+  let n = 0;
+  // 앞으로 나올 딸깍을 미리 예약해둔다
+  const schedule = () => {
+    const horizon = actx.currentTime + 0.4;
+    while(ctxT0 + n * CFG.CAL_PERIOD < horizon){
+      beep(ctxT0 + n * CFG.CAL_PERIOD, 1500, 0.3);
+      n++;
+    }
+  };
+  schedule();
+  calTimer = setInterval(() => {
+    if(!calOn){ clearInterval(calTimer); return; }
+    schedule();
+    const phase = ((performance.now() - calT0) / 1000) % CFG.CAL_PERIOD;
+    $('calDot').textContent = phase < 0.12 ? '●' : '○';
+  }, 30);
+}
+
+function calTap(perf){
+  if(!calOn) return;
+  const P = CFG.CAL_PERIOD;
+  let d = ((perf - calT0) / 1000) % P;
+  if(d > P / 2) d -= P;                 // 다음 박에 가까우면 음수로
+
+  calDeltas.push(d * 1000);
+  if(calDeltas.length > 16) calDeltas.shift();
+
+  const s = calDeltas.slice().sort((a,b) => a-b);
+  const med = s[Math.floor(s.length/2)];
+
+  $('calNow').textContent = (med >= 0 ? '+' : '') + med.toFixed(0) + ' ms';
+  $('calCnt').textContent = calDeltas.length + '번' + (calDeltas.length < 8 ? ' (더 눌러라)' : '');
+}
+
+function calStop(){ calOn = false; clearInterval(calTimer); }
+
+$('calBtn').addEventListener('click', () => { go('sCal'); });
+$('calStart').addEventListener('click', calStart);
+$('calReset').addEventListener('click', () => { calDeltas = []; $('calNow').textContent = '– ms'; $('calCnt').textContent = '0번'; });
+$('calApply').addEventListener('click', () => {
+  if(calDeltas.length < 4){ $('calCnt').textContent = '너무 적다. 8번은 눌러라'; return; }
+  const s = calDeltas.slice().sort((a,b) => a-b);
+  opt.offset = Math.round(s[Math.floor(s.length/2)]);
+  saveOpt(); syncUI(); calStop(); go('sCfg');
+});
+$('calBack').addEventListener('click', () => { calStop(); go('sCfg'); });
+
+
+/* =========================================================
+   설정 화면 연결
+   ========================================================= */
+function syncUI(){
+  $('spd').value = opt.speed;  $('spdV').textContent = opt.speed;
+  $('off').value = opt.offset; $('offV').textContent = (opt.offset >= 0 ? '+' : '') + opt.offset + ' ms';
+  $('vol').value = opt.vol;    $('volV').textContent = opt.vol + '%';
+  audio.volume = opt.vol / 100;
+  drawKeys();
+}
+syncUI();
+
+$('spd').addEventListener('input', e => { opt.speed = Number(e.target.value); saveOpt(); syncUI(); });
+$('off').addEventListener('input', e => { opt.offset = Number(e.target.value); saveOpt(); syncUI(); });
+$('vol').addEventListener('input', e => { opt.vol = Number(e.target.value); saveOpt(); syncUI(); });
+
+$('startBtn').addEventListener('click', start);
+$('cfgBtn').addEventListener('click', () => go('sCfg'));
+$('cfgBack').addEventListener('click', () => go('sTitle'));
+$('resBack').addEventListener('click', () => go('sTitle'));
+$('listBtn').addEventListener('click', () => go('sTitle'));
+$('retryBtn').addEventListener('click', start);
+
+audio.addEventListener('error', () => {
+  if(scene === 'sPlay'){ playing = false; }
+  $('msg1').textContent = 'mp3 를 못 찾았다: ' + audio.src;
+});
+</script>
+</body>
+</html>
