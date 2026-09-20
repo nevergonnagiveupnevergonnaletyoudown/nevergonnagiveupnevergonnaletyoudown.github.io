@@ -20,6 +20,12 @@
      defer 는 "이거 받느라 화면 그리는 걸 멈추지 마라"는 뜻. -->
 <script src="fx.js?v=1" defer></script>
 
+<!-- 오디오 비주얼라이저.
+     ★ 여기엔 defer 를 붙이면 안 된다.
+       defer 를 붙이면 페이지 맨 아래 <script> 가 먼저 돌아버려서
+       그 시점엔 NVViz 가 아직 없다. -->
+<script src="viz.js?v=1"></script>
+
 <style>
 /* 이 페이지에서만 쓰는 것들 */
 
@@ -78,6 +84,16 @@
 .status .cur{ color:var(--phos); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .status .err{ color:var(--amber); text-shadow:0 0 6px var(--amber); }
 
+/* 비주얼라이저 캔버스.
+   display:block 이 없으면 아래에 알 수 없는 4px 틈이 생긴다
+   (캔버스가 글자처럼 취급돼서 줄 밑 여백이 붙는다) */
+.viz{
+  display:block;
+  width:100%;
+  height:56px;
+  margin-bottom:6px;
+}
+
 .track{
   height:8px;
   background:rgba(12,122,62,.35);
@@ -125,6 +141,7 @@
   .tag{ display:none; }        /* 좁은 화면에선 상태 대신 장르를 남긴다 */
   .gen{ max-width:38%; }
   .vol{ margin-left:0; width:100%; }
+  .viz{ height:42px; }
 }
 </style>
 </head>
@@ -198,6 +215,8 @@
       <span class="cur" id="nowPlaying">&gt; standby</span>
       <span id="time">--:-- / --:--</span>
     </div>
+
+    <canvas class="viz" id="viz"></canvas>
 
     <div class="track" id="track"><div class="fill" id="fill"></div></div>
 
@@ -407,6 +426,10 @@ document.addEventListener('keydown', e => {
 });
 
 draw();
+
+/* 비주얼라이저 연결. viz.js 가 먼저 읽혀 있어야 한다.
+   첫 번째는 소리 내는 Audio 객체, 두 번째는 그림 그릴 캔버스. */
+NVViz.attach(audio, document.getElementById('viz'));
 </script>
 </body>
 </html>
