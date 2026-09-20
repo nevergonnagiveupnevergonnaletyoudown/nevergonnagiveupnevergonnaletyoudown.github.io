@@ -878,7 +878,11 @@ const GEN = {
   FILL_FLOOR: 0.25,   // 그 구간 소리가 이 비율보다 조용하면 안 채운다
 
   JACK_MIN: 0.14,     // 같은 레인을 다시 누르기까지 필요한 최소 시간(초)
-  HAND_MIN: 0.075     // 이보다 촘촘하면 반대쪽 손으로 넘긴다
+  HAND_MIN: 0.075,    // 이보다 촘촘하면 반대쪽 손으로 넘긴다
+
+  MAX_RUN: 2,         // 같은 레인이 연속으로 나올 수 있는 최대 횟수
+  RECENT: 4,          // 최근 몇 개의 레인을 기억해서 피할지
+  SPREAD: 1.4         // 최근에 쓴 레인을 얼마나 피할지. 크면 더 골고루 퍼진다
 };
 
 const tick0 = () => new Promise(r => setTimeout(r, 0));
@@ -1099,52 +1103,79 @@ async function generate(full){
         }
       }
 
-      for(const v of filled) picked.push(v);
+      for(const v of filled){ v.ci = c; picked.push(v); }   // 구간 번호를 달아둔다
     }
 
     picked.sort((p, q) => p.t - q.t);
 
     /* ---------- 레인 배치 ----------
-       높낮이 순위로 자리를 정하되, 손이 꼬이는 배치는 막는다. */
+       높낮이로 자리를 정하되, 세 가지를 지킨다.
+
+       ★ 1. 순위는 "곡 전체"가 아니라 "그 구간 안에서" 매긴다.
+            전체 기준으로 하면, 소리가 전부 높은 구간은 노트가
+            통째로 오른쪽 레인으로 몰린다. 전체 통계는 고른데
+            실제로 쳐보면 한쪽만 계속 나오는 상태가 된다.
+
+       ★ 2. 같은 레인이 세 번 연속 나오지 않게 막는다.
+            시간 간격만으로 막으면, 느린 구간에서는 조건에
+            안 걸려서 같은 레인이 열 번씩 이어진다.
+
+       ★ 3. 최근에 쓴 레인에는 벌점을 줘서 골고루 퍼뜨린다. */
     say('레인 배치 중...');
     await tick0();
 
-    const sorted = picked.map(v => v.cent).sort((p, q) => p - q);
-    const rankOf = c => {
-      let lo = 0, hi = sorted.length;
-      while(lo < hi){ const m = (lo + hi) >> 1; if(sorted[m] < c) lo = m + 1; else hi = m; }
-      return sorted.length ? lo / sorted.length : 0;
+    const byChunk = new Map();
+    for(const v of picked){
+      if(!byChunk.has(v.ci)) byChunk.set(v.ci, []);
+      byChunk.get(v.ci).push(v.cent);
+    }
+    for(const arr of byChunk.values()) arr.sort((p, q) => p - q);
+
+    const rankOf = (c, ci) => {
+      const arr = byChunk.get(ci);
+      if(!arr || !arr.length) return 0;
+      let lo = 0, hi = arr.length;
+      while(lo < hi){ const m = (lo + hi) >> 1; if(arr[m] < c) lo = m + 1; else hi = m; }
+      return lo / arr.length;
     };
 
     const made = [];
     let prevLane = -1, prevT = -1e9;
+    let runLane = -1, runLen = 0;
+    const recent = [];                       // 최근에 쓴 레인들
 
     for(const v of picked){
-      const want = Math.min(CFG.LANES - 1, Math.floor(rankOf(v.cent) * CFG.LANES));
+      const want = Math.min(CFG.LANES - 1, Math.floor(rankOf(v.cent, v.ci) * CFG.LANES));
       const dt = v.t - prevT;
 
       const banned = new Set();
-      // 같은 레인 연타는 빠르면 못 친다
-      if(prevLane >= 0 && dt < GEN.JACK_MIN) banned.add(prevLane);
-      // 아주 촘촘하면 아예 반대쪽 손으로
-      if(prevLane >= 0 && dt < GEN.HAND_MIN){
+      if(prevLane >= 0 && dt < GEN.JACK_MIN) banned.add(prevLane);          // 너무 빠른 연타
+      if(runLane >= 0 && runLen >= GEN.MAX_RUN) banned.add(runLane);        // 같은 레인 연속 제한
+      if(prevLane >= 0 && dt < GEN.HAND_MIN){                               // 아주 촘촘하면 반대 손
         const left = prevLane < CFG.LANES / 2;
         for(let L = 0; L < CFG.LANES; L++) if((L < CFG.LANES / 2) === left) banned.add(L);
       }
 
-      let lane = want;
-      if(banned.has(lane)){
-        let bd = 99;
-        for(let L = 0; L < CFG.LANES; L++){
-          if(banned.has(L)) continue;
-          const d = Math.abs(L - want);
-          if(d < bd){ bd = d; lane = L; }
+      /* 허용된 레인 중 가장 비용이 낮은 것을 고른다.
+         비용 = 원하는 자리에서 먼 정도 + 최근에 썼으면 벌점 */
+      let lane = want, bestCost = Infinity;
+      for(let L = 0; L < CFG.LANES; L++){
+        if(banned.has(L)) continue;
+        let cost = Math.abs(L - want);
+        for(let r = 0; r < recent.length; r++){
+          if(recent[r] === L) cost += GEN.SPREAD * (recent.length - r) / recent.length;
         }
+        if(cost < bestCost){ bestCost = cost; lane = L; }
       }
 
       made.push([Number(v.t.toFixed(4)), lane]);
+
+      if(lane === runLane) runLen++;
+      else { runLane = lane; runLen = 1; }
       prevLane = lane;
       prevT = v.t;
+      recent.push(lane);
+      if(recent.length > GEN.RECENT) recent.shift();
     }
 
     /* ---------- 합치기 ---------- */
@@ -1162,7 +1193,12 @@ async function generate(full){
     }
 
     const dens = made.length / (B - A);
-    say('노트 ' + made.length + '개 · 초당 ' + dens.toFixed(2) + '개 · 구간 ' + nCh + '개로 나눠 처리함');
+    let msg = '노트 ' + made.length + '개 · 초당 ' + dens.toFixed(2) + '개 · 구간 ' + nCh + '개';
+    /* 최소간격이 목표를 가로막는 경우가 흔하다.
+       예: 190 BPM 에서 "1박"이면 초당 3.2개가 물리적 한계라
+       HARD(4.0)를 골라도 그 이상은 못 넣는다. */
+    if(dens < nps * 0.85) msg += ' · 최소간격을 좁혀야 더 넣을 수 있다';
+    say(msg);
 
   }catch(err){
     say('실패: ' + err.message);
