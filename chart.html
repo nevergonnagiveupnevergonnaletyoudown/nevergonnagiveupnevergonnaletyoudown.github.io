@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NV / CHART EDITOR</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- 색과 폰트만 가져다 쓴다.
+     fx.js(지직 효과)는 일부러 안 붙였다. 채보 찍을 땐 화면이 흔들리면 방해된다. -->
+<link rel="stylesheet" href="style.css?v=3">
+
+<style>
+/* 이 페이지는 도구라서 .screen 대신 넓은 판을 쓴다 */
+body{ align-items:flex-start; padding:14px; }
+
+.panel{
+  width:min(920px, 100%);
+  margin:0 auto;
+  background:var(--screen);
+  border:2px solid var(--phos-dim);
+  border-radius:12px;
+  padding:16px 18px 18px;
+  text-shadow:0 0 6px currentColor;
+}
+
+.bar{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:8px 0;
+  border-bottom:1px solid rgba(12,122,62,.45);
+}
+.bar:last-of-type{ border-bottom:none; }
+
+.lbl{ font-size:11px; color:var(--phos-dim); letter-spacing:.06em; }
+
+input[type=number], input[type=text], select, textarea{
+  font:inherit; font-size:13px;
+  background:#031008;
+  color:var(--phos);
+  border:1px solid var(--phos-dim);
+  padding:4px 7px;
+}
+input[type=number]{ width:84px; }
+textarea{ width:100%; height:90px; resize:vertical; font-size:11px; }
+
+.btn.on{ background:var(--phos); color:var(--screen); text-shadow:none; }
+.btn.amber{ border-color:var(--amber); color:var(--amber); }
+.btn.amber:hover{ background:var(--amber); color:var(--screen); }
+.btn:disabled{ opacity:.35; cursor:default; }
+
+/* ---------- 시간 막대 ---------- */
+.seek{
+  position:relative;
+  height:22px;
+  background:rgba(12,122,62,.22);
+  border:1px solid var(--phos-dim);
+  cursor:pointer;
+  margin:10px 0 4px;
+}
+.seek .played{ position:absolute; inset:0 auto 0 0; width:0; background:rgba(44,255,136,.28); }
+.seek .region{ position:absolute; top:0; bottom:0; background:rgba(255,182,60,.18); border-left:1px solid var(--amber); border-right:1px solid var(--amber); }
+.seek .head{ position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--phos); }
+
+/* ---------- 노트 미리보기 ---------- */
+#view{ display:block; width:100%; height:330px; background:#020806; border:1px solid var(--phos-dim); }
+
+.stat{ display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--phos-mid); margin-top:8px; }
+.stat b{ color:var(--phos); font-weight:400; }
+
+.help{ font-size:11px; color:var(--phos-dim); line-height:1.7; margin-top:10px; }
+.help kbd{ color:var(--phos-mid); border:1px solid var(--phos-dim); padding:0 4px; }
+
+.msg{ font-size:12px; color:var(--amber); min-height:16px; margin-top:6px; }
+
+@media (max-width:560px){
+  #view{ height:250px; }
+  .panel{ padding:12px; }
+}
+</style>
+</head>
+<body>
+
+<div class="panel">
+
+  <div class="top">
+    <div class="ttl">CHART EDITOR</div>
+    <a class="back" href="index.html">◀ BACK</a>
+  </div>
+
+  <!-- ---------- 1줄: 곡 ---------- -->
+  <div class="bar">
+    <span class="lbl">SONG</span>
+    <select id="song"></select>
+    <button class="btn" id="loadBtn">LOAD</button>
+    <span class="lbl" id="dur">--:--</span>
+  </div>
+
+  <!-- ---------- 2줄: 박자 ---------- -->
+  <div class="bar">
+    <span class="lbl">BPM</span>
+    <input type="number" id="bpm" value="180" min="40" max="400" step="0.1">
+    <button class="btn" id="tapBtn">TAP <span id="tapN"></span></button>
+
+    <span class="lbl">OFFSET</span>
+    <input type="number" id="offset" value="0" step="0.001">
+    <button class="btn" id="offBtn">SET HERE</button>
+  </div>
+
+  <!-- ---------- 3줄: 찍기 설정 ---------- -->
+  <div class="bar">
+    <span class="lbl">SNAP</span>
+    <button class="btn snap" data-div="1">1/1</button>
+    <button class="btn snap on" data-div="2">1/2</button>
+    <button class="btn snap" data-div="4">1/4</button>
+    <button class="btn snap" data-div="8">1/8</button>
+    <button class="btn snap" data-div="0">OFF</button>
+
+    <span class="lbl" style="margin-left:8px">SPEED</span>
+    <button class="btn rate" data-rate="0.5">.5</button>
+    <button class="btn rate" data-rate="0.75">.75</button>
+    <button class="btn rate on" data-rate="1">1.0</button>
+
+    <button class="btn" id="metroBtn" style="margin-left:8px">METRONOME</button>
+  </div>
+
+  <!-- ---------- 키 설정 ---------- -->
+  <div class="bar">
+    <span class="lbl">KEYS</span>
+    <button class="btn keyb" data-i="0">A</button>
+    <button class="btn keyb" data-i="1">S</button>
+    <button class="btn keyb" data-i="2">;</button>
+    <button class="btn keyb" data-i="3">'</button>
+    <span class="lbl" id="bindHint">버튼을 누른 뒤 원하는 키를 치면 바뀐다</span>
+  </div>
+
+  <!-- ---------- 4줄: 구간 ---------- -->
+  <div class="bar">
+    <span class="lbl">REGION</span>
+    <input type="number" id="rStart" value="0" step="0.1"> <span class="lbl">~</span>
+    <input type="number" id="rEnd" value="0" step="0.1">
+    <button class="btn" id="rSetA">A = HERE</button>
+    <button class="btn" id="rSetB">B = HERE</button>
+    <button class="btn" id="rGo">JUMP TO A</button>
+  </div>
+
+  <div class="seek" id="seek">
+    <div class="played" id="played"></div>
+    <div class="region" id="regionBox"></div>
+    <div class="head" id="head"></div>
+  </div>
+
+  <canvas id="view"></canvas>
+
+  <div class="stat">
+    <span>NOTES <b id="nCount">0</b></span>
+    <span>TIME <b id="nTime">00:00.000</b></span>
+    <span>BEAT <b id="nBeat">–</b></span>
+    <span>LAST <b id="nLast">–</b></span>
+  </div>
+
+  <!-- ---------- 출력 ---------- -->
+  <div class="bar" style="margin-top:10px">
+    <button class="btn" id="undoBtn">UNDO</button>
+    <button class="btn" id="delBtn">DEL NEAR</button>
+    <button class="btn amber" id="clearBtn">CLEAR ALL</button>
+    <button class="btn" id="exportBtn" style="margin-left:auto">EXPORT .json</button>
+    <button class="btn" id="copyBtn">COPY</button>
+  </div>
+
+  <div class="bar">
+    <span class="lbl">IMPORT — 여기에 JSON 붙여넣고 LOAD JSON</span>
+    <button class="btn" id="importBtn">LOAD JSON</button>
+  </div>
+  <textarea id="io" placeholder="{ &quot;bpm&quot;: 180, &quot;notes&quot;: [[1.2, 0]] }"></textarea>
+
+  <div class="msg" id="msg"></div>
+
+  <div class="help">
+    <span id="helpKeys">A S ; '</span> 노트 찍기 (재생 중에만) ·
+    <kbd>SPACE</kbd> 재생/정지 ·
+    <kbd>BACKSPACE</kbd> 마지막 노트 취소 ·
+    <kbd>T</kbd> 탭 템포 ·
+    <kbd>←</kbd><kbd>→</kbd> 1초 이동 ·
+    <kbd>[</kbd><kbd>]</kbd> 한 박자 이동<br>
+    작업 내용은 자동으로 저장된다. 새로고침해도 안 날아간다.
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   ★ 고치고 싶을 만한 값들
+   ========================================================= */
+const CFG = {
+  DIR: 'song_list/',        // mp3 폴더
+  LANES: 4,                 // 레인 수
+  KEYS: ['a','s',';',"'"],  // 레인별 기본 키. 순서가 곧 레인 번호 0,1,2,3
+                            // (화면의 REBIND 로 바꾸면 그게 우선한다)
+
+  LOOKAHEAD: 1.9,           // 판정선 위로 몇 초 앞까지 보여줄지
+  PAST: 0.45,               // 판정선 아래로 몇 초 지난 것까지 보여줄지
+
+  TAP_RESET: 2.0,           // 탭 템포: 이 시간 이상 쉬면 처음부터 다시
+  METRO_VOL: 0.3,           // 메트로놈 크기
+  SCHED_AHEAD: 0.12,        // 메트로놈을 몇 초 앞까지 미리 예약할지
+  SCHED_TICK: 25,           // 예약 담당이 도는 간격(ms)
+
+  SAVE_KEY: 'nv-chart-draft'
+};
+
+/* 목록에 띄울 곡들 */
+const SONGS = [
+  '01_hazy_afterlight.mp3',
+  '02_clear_blue_sky.mp3',
+  '03_containment_failure.mp3',
+  '04_its_rainy_outside.mp3',
+  '05_soaring_through_the_air.mp3',
+  '06_th06_boss_battle.mp3',
+  '07_merry_merchants_shop.mp3'
+];
+
+
+/* =========================================================
+   상태
+   ========================================================= */
+const audio = new Audio();
+audio.preload = 'auto';
+
+let notes = [];        // [[시간(초), 레인], ...] — 항상 시간순 정렬 유지
+let bpm = 180;
+let offset = 0;        // 첫 박자가 시작하는 시각(초)
+let snapDiv = 2;       // 0 = 스냅 끔, 1 = 4분음표, 2 = 8분음표, 4 = 16분음표
+let rate = 1;
+let metroOn = false;
+
+let flash = [0,0,0,0]; // 노트 찍을 때 반짝이는 잔상
+
+const $ = id => document.getElementById(id);
+
+
+/* =========================================================
+   곡 목록
+   ========================================================= */
+SONGS.forEach(f => {
+  const o = document.createElement('option');
+  o.value = f;
+  o.textContent = f.replace(/\.mp3$/, '');
+  $('song').appendChild(o);
+});
+$('song').value = '06_th06_boss_battle.mp3';
+
+function loadSong(){
+  audio.src = CFG.DIR + $('song').value;
+  audio.load();
+  say('loading ' + $('song').value);
+}
+$('loadBtn').addEventListener('click', loadSong);
+
+audio.addEventListener('loadedmetadata', () => {
+  $('dur').textContent = fmt(audio.duration);
+  if(Number($('rEnd').value) === 0) $('rEnd').value = audio.duration.toFixed(1);
+  say('ready');
+});
+audio.addEventListener('error', () => say('FILE NOT FOUND: ' + audio.src));
+
+
+/* =========================================================
+   메트로놈
+
+   소리를 "지금 내라"고 하면 항상 조금씩 늦는다.
+   그래서 미리 앞을 내다보고 "몇 초 뒤에 내라"고 예약해둔다.
+   이걸 룩어헤드 스케줄러라고 부른다.
+   ========================================================= */
+let actx = null;
+let metroNext = 0;     // 다음에 예약할 박자 번호
+
+function ensureCtx(){
+  if(actx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(AC) actx = new AC();
+}
+
+function click(when, strong){
+  const osc = actx.createOscillator();
+  const g = actx.createGain();
+  osc.frequency.value = strong ? 1600 : 950;   // 마디 첫 박만 높게
+  g.gain.setValueAtTime(CFG.METRO_VOL, when);
+  g.gain.exponentialRampToValueAtTime(0.001, when + 0.05);
+  osc.connect(g).connect(actx.destination);
+  osc.start(when);
+  osc.stop(when + 0.06);
+}
+
+setInterval(() => {
+  if(!metroOn || audio.paused || !actx) return;
+
+  const now = audio.currentTime;
+  const beat = 60 / bpm;
+
+  let n = Math.ceil((now - offset) / beat);
+  if(n < metroNext) n = metroNext;
+
+  // 재생 속도를 늦추면 실제 시간도 그만큼 늘어난다
+  const horizon = now + CFG.SCHED_AHEAD * rate;
+
+  while(true){
+    const t = offset + n * beat;
+    if(t > horizon) break;
+    if(t >= now) click(actx.currentTime + (t - now) / rate, ((n % 4) + 4) % 4 === 0);
+    n++;
+  }
+  metroNext = n;
+}, CFG.SCHED_TICK);
+
+$('metroBtn').addEventListener('click', () => {
+  ensureCtx();
+  if(actx && actx.state === 'suspended') actx.resume();
+  metroOn = !metroOn;
+  metroNext = 0;
+  $('metroBtn').classList.toggle('on', metroOn);
+});
+
+
+/* =========================================================
+   박자 계산
+   ========================================================= */
+function beatLen(){ return 60 / bpm; }
+
+/* 스냅: 가장 가까운 격자 칸으로 붙인다.
+   사람이 손으로 친 건 아무리 잘 쳐도 20~50ms 씩 어긋나는데,
+   이걸 그대로 두면 게임에서 노트가 미묘하게 흔들린다. */
+function snap(t){
+  if(!snapDiv) return t;
+  const step = beatLen() / snapDiv;
+  return offset + Math.round((t - offset) / step) * step;
+}
+
+function beatNoOf(t){
+  return (t - offset) / beatLen();
+}
+
+
+/* =========================================================
+   노트 넣고 빼기
+   ========================================================= */
+function addNote(rawT, lane){
+  const t = snap(rawT);
+
+  // 같은 레인 같은 자리에 이미 있으면 무시 (연타로 두 번 들어가는 것 방지)
+  const dup = notes.some(n => n[1] === lane && Math.abs(n[0] - t) < 0.012);
+  if(dup) return;
+
+  notes.push([t, lane]);
+  notes.sort((a, b) => a[0] - b[0]);
+
+  flash[lane] = 1;
+  refresh();
+}
+
+function undo(){
+  if(!notes.length) return;
+  // 재생 위치보다 앞에 있는 것 중 제일 마지막 것을 뺀다
+  let idx = -1, best = -Infinity;
+  const now = audio.currentTime + 0.05;
+  notes.forEach((n, i) => { if(n[0] <= now && n[0] > best){ best = n[0]; idx = i; } });
+  if(idx < 0) idx = notes.length - 1;
+  notes.splice(idx, 1);
+  refresh();
+}
+
+/* 재생 위치 근처(한 칸 이내) 노트를 전부 지운다 */
+function delNear(){
+  const w = snapDiv ? beatLen() / snapDiv * 0.6 : 0.08;
+  const now = audio.currentTime;
+  const before = notes.length;
+  notes = notes.filter(n => Math.abs(n[0] - now) > w);
+  say('removed ' + (before - notes.length));
+  refresh();
+}
+
+
+/* =========================================================
+   저장 / 불러오기
+   ========================================================= */
+function chartObj(){
+  return {
+    song: CFG.DIR + $('song').value,
+    bpm: bpm,
+    offset: Number(offset.toFixed(4)),
+    start: Number($('rStart').value),
+    end: Number($('rEnd').value),
+    notes: notes.map(n => [Number(n[0].toFixed(4)), n[1]])
+  };
+}
+
+function save(){
+  try{ localStorage.setItem(CFG.SAVE_KEY, JSON.stringify(chartObj())); }catch(e){}
+}
+
+function load(){
+  try{
+    const raw = localStorage.getItem(CFG.SAVE_KEY);
+    if(raw) apply(JSON.parse(raw), true);
+  }catch(e){}
+}
+
+function apply(o, quiet){
+  if(!o) return;
+  if(o.song){
+    const f = String(o.song).split('/').pop();
+    if(SONGS.includes(f)) $('song').value = f;
+  }
+  if(o.bpm)    $('bpm').value    = o.bpm;
+  if(o.offset != null) $('offset').value = o.offset;
+  if(o.start  != null) $('rStart').value = o.start;
+  if(o.end    != null) $('rEnd').value   = o.end;
+
+  notes = Array.isArray(o.notes)
+    ? o.notes.filter(n => Array.isArray(n) && n.length >= 2).map(n => [Number(n[0]), Number(n[1])])
+    : [];
+  notes.sort((a, b) => a[0] - b[0]);
+
+  readInputs();
+  loadSong();
+  refresh();
+  if(!quiet) say('loaded ' + notes.length + ' notes');
+}
+
+$('importBtn').addEventListener('click', () => {
+  try{ apply(JSON.parse($('io').value)); }
+  catch(e){ say('JSON 형식이 잘못됐다: ' + e.message); }
+});
+
+$('copyBtn').addEventListener('click', () => {
+  const s = JSON.stringify(chartObj());
+  $('io').value = s;
+  $('io').select();
+  try{ navigator.clipboard.writeText(s); say('copied'); }
+  catch(e){ say('아래 칸에서 직접 복사해라'); }
+});
+
+$('exportBtn').addEventListener('click', () => {
+  const s = JSON.stringify(chartObj(), null, 1);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([s], {type:'application/json'}));
+  a.download = $('song').value.replace(/\.mp3$/, '') + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  say('exported');
+});
+
+$('clearBtn').addEventListener('click', () => {
+  if(!confirm('노트를 전부 지운다. 진짜?')) return;
+  notes = [];
+  refresh();
+});
+
+
+/* =========================================================
+   탭 템포 — 박자에 맞춰 두드리면 BPM 을 역산한다
+   ========================================================= */
+let taps = [];
+
+function tap(){
+  const now = performance.now() / 1000;
+  if(taps.length && now - taps[taps.length - 1] > CFG.TAP_RESET) taps = [];
+  taps.push(now);
+  if(taps.length > 9) taps.shift();
+
+  $('tapN').textContent = taps.length > 1 ? '(' + taps.length + ')' : '';
+
+  if(taps.length >= 3){
+    const span = taps[taps.length - 1] - taps[0];
+    const got = 60 / (span / (taps.length - 1));
+    $('bpm').value = got.toFixed(1);
+    readInputs();
+  }
+}
+$('tapBtn').addEventListener('click', tap);
+
+
+/* =========================================================
+   입력칸 읽기
+   ========================================================= */
+function readInputs(){
+  bpm = Math.max(20, Number($('bpm').value) || 180);
+  offset = Number($('offset').value) || 0;
+  refresh();
+}
+['bpm','offset','rStart','rEnd'].forEach(id =>
+  $(id).addEventListener('input', readInputs));
+
+$('offBtn').addEventListener('click', () => {
+  $('offset').value = audio.currentTime.toFixed(3);
+  readInputs();
+  say('offset = ' + audio.currentTime.toFixed(3));
+});
+
+document.querySelectorAll('.snap').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.snap').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  snapDiv = Number(b.dataset.div);
+}));
+
+document.querySelectorAll('.rate').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.rate').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  rate = Number(b.dataset.rate);
+  audio.playbackRate = rate;
+  metroNext = 0;
+}));
+
+/* =========================================================
+   키 배열 바꾸기
+
+   사람마다 쓰는 손가락 배열이 다르다. (as;' / dfjk / sdkl ...)
+   바꾼 값은 저장해두고 다음에 들어와도 그대로 쓴다.
+   ========================================================= */
+const KEY_SAVE = 'nv-chart-keys';
+
+/* 이 키들은 다른 기능이 이미 쓰고 있어서 레인에 못 준다 */
+const RESERVED = [' ', 'backspace', 't', 'arrowleft', 'arrowright', '[', ']', 'enter', 'escape', 'tab'];
+
+let bindIdx = -1;   // 지금 어떤 레인의 키를 기다리는 중인지. -1 이면 대기 아님
+
+try{
+  const saved = JSON.parse(localStorage.getItem(KEY_SAVE) || 'null');
+  if(Array.isArray(saved) && saved.length === CFG.LANES) CFG.KEYS = saved;
+}catch(e){}
+
+function keyLabel(k){
+  if(k === ' ') return 'SPC';
+  return k.length === 1 ? k.toUpperCase() : k;
+}
+
+function drawKeys(){
+  document.querySelectorAll('.keyb').forEach(b => {
+    const i = Number(b.dataset.i);
+    b.textContent = (bindIdx === i) ? '...' : keyLabel(CFG.KEYS[i]);
+    b.classList.toggle('on', bindIdx === i);
+  });
+  $('helpKeys').textContent = CFG.KEYS.map(keyLabel).join(' ');
+}
+
+document.querySelectorAll('.keyb').forEach(b => b.addEventListener('click', () => {
+  bindIdx = Number(b.dataset.i);
+  b.blur();                     // 포커스가 남아 있으면 스페이스가 버튼을 또 누른다
+  $('bindHint').textContent = '원하는 키를 지금 눌러라 (ESC 취소)';
+  drawKeys();
+}));
+
+function bindKey(k){
+  if(k === 'escape'){ bindIdx = -1; $('bindHint').textContent = '취소됨'; drawKeys(); return; }
+
+  if(RESERVED.includes(k)){
+    $('bindHint').textContent = '그 키는 다른 기능이 쓰고 있다';
+    return;                     // 계속 기다린다
+  }
+  const dup = CFG.KEYS.indexOf(k);
+  if(dup >= 0 && dup !== bindIdx){
+    $('bindHint').textContent = '이미 ' + (dup + 1) + '번 레인이 쓰는 키다';
+    return;
+  }
+
+  CFG.KEYS[bindIdx] = k;
+  bindIdx = -1;
+  $('bindHint').textContent = 'OK';
+  try{ localStorage.setItem(KEY_SAVE, JSON.stringify(CFG.KEYS)); }catch(e){}
+  drawKeys();
+}
+
+drawKeys();
+
+
+$('rSetA').addEventListener('click', () => { $('rStart').value = audio.currentTime.toFixed(2); readInputs(); });$('rSetB').addEventListener('click', () => { $('rEnd').value   = audio.currentTime.toFixed(2); readInputs(); });
+$('rGo').addEventListener('click', () => seek(Number($('rStart').value)));
+
+
+/* =========================================================
+   재생 조작
+   ========================================================= */
+function playPause(){
+  ensureCtx();
+  if(actx && actx.state === 'suspended') actx.resume();
+  if(audio.paused){
+    audio.playbackRate = rate;
+    metroNext = 0;
+    audio.play().catch(() => say('재생 실패 — LOAD 를 먼저 눌러라'));
+  }else{
+    audio.pause();
+  }
+}
+
+function seek(t){
+  if(!isFinite(audio.duration)) return;
+  audio.currentTime = Math.min(audio.duration, Math.max(0, t));
+  metroNext = 0;
+}
+
+$('seek').addEventListener('click', e => {
+  if(!isFinite(audio.duration)) return;
+  const box = $('seek').getBoundingClientRect();
+  seek((e.clientX - box.left) / box.width * audio.duration);
+});
+
+
+/* =========================================================
+   키보드
+
+   ★ e.timeStamp 가 이 에디터의 핵심이다.
+     키를 누른 "진짜 시각"은 브라우저가 이벤트에 적어준 timeStamp 고,
+     우리 함수가 실행되는 시점은 그보다 몇 ms 늦다.
+     그 차이를 빼줘야 실제로 누른 순간의 음악 위치가 나온다.
+   ========================================================= */
+document.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if(tag === 'input' || tag === 'textarea' || tag === 'select') return;  // 입력칸에선 무시
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  if(e.repeat) return;                                                   // 누르고 있는 건 한 번만
+
+  const k = e.key.toLowerCase();
+
+  /* 키 바꾸는 중이면 다른 건 전부 무시하고 이것부터 처리한다 */
+  if(bindIdx >= 0){
+    e.preventDefault();
+    bindKey(k);
+    return;
+  }
+
+  const lane = CFG.KEYS.indexOf(k);
+  if(lane >= 0){
+    e.preventDefault();
+    if(audio.paused) return;                     // 멈춰 있을 땐 안 찍는다
+    const lag = Math.max(0, performance.now() - e.timeStamp) / 1000;
+    addNote(audio.currentTime - lag * rate, lane);
+    return;
+  }
+
+  if(k === ' '){ e.preventDefault(); playPause(); }
+  if(k === 'backspace'){ e.preventDefault(); undo(); }
+  if(k === 't'){ e.preventDefault(); tap(); }
+  if(k === 'arrowright'){ e.preventDefault(); seek(audio.currentTime + 1); }
+  if(k === 'arrowleft'){  e.preventDefault(); seek(audio.currentTime - 1); }
+  if(k === ']'){ e.preventDefault(); seek(audio.currentTime + beatLen()); }
+  if(k === '['){ e.preventDefault(); seek(audio.currentTime - beatLen()); }
+});
+
+
+/* =========================================================
+   화면 그리기
+   ========================================================= */
+const cv = $('view');
+const g = cv.getContext('2d');
+let W = 0, H = 0, color = {};
+
+function readColors(){
+  const cs = getComputedStyle(document.documentElement);
+  const get = (n, d) => (cs.getPropertyValue(n).trim() || d);
+  color = {
+    phos: get('--phos','#2CFF88'),
+    mid:  get('--phos-mid','#17B85F'),
+    dim:  get('--phos-dim','#0C7A3E'),
+    amber:get('--amber','#FFB63C')
+  };
+}
+
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const box = cv.getBoundingClientRect();
+  W = Math.max(1, Math.round(box.width));
+  H = Math.max(1, Math.round(box.height));
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+readColors();
+resize();
+
+function draw(){
+  requestAnimationFrame(draw);
+
+  const now = audio.currentTime;
+  const lineY = H - 54;                          // 판정선 위치
+  const pps = (lineY - 10) / CFG.LOOKAHEAD;      // 1초당 몇 픽셀 내려오는지
+  const lw = W / CFG.LANES;
+
+  g.clearRect(0, 0, W, H);
+
+  // 레인 칸막이
+  g.strokeStyle = 'rgba(12,122,62,.5)';
+  g.lineWidth = 1;
+  for(let i = 1; i < CFG.LANES; i++){
+    g.beginPath(); g.moveTo(i * lw, 0); g.lineTo(i * lw, H); g.stroke();
+  }
+
+  // 박자 격자
+  const step = beatLen() / (snapDiv || 1);
+  if(step > 0.02){
+    let n = Math.floor((now - CFG.PAST - offset) / step);
+    for(;; n++){
+      const t = offset + n * step;
+      if(t > now + CFG.LOOKAHEAD) break;
+      const y = lineY - (t - now) * pps;
+      if(y < -2 || y > H + 2) continue;
+
+      const b = beatNoOf(t);
+      const isBeat = Math.abs(b - Math.round(b)) < 1e-6;
+      const isBar  = isBeat && ((Math.round(b) % 4) + 4) % 4 === 0;
+
+      g.strokeStyle = isBar ? 'rgba(44,255,136,.45)'
+                    : isBeat ? 'rgba(23,184,95,.30)'
+                             : 'rgba(12,122,62,.18)';
+      g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+    }
+  }
+
+  // 구간 표시
+  const ra = Number($('rStart').value), rb = Number($('rEnd').value);
+  [ra, rb].forEach((t, i) => {
+    const y = lineY - (t - now) * pps;
+    if(y < 0 || y > H) return;
+    g.strokeStyle = color.amber;
+    g.setLineDash([6,4]);
+    g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = color.amber;
+    g.font = '11px monospace';
+    g.fillText(i ? 'B' : 'A', 4, y - 4);
+  });
+
+  // 노트
+  const nh = 11;
+  for(const [t, lane] of notes){
+    if(t < now - CFG.PAST || t > now + CFG.LOOKAHEAD) continue;
+    const y = lineY - (t - now) * pps;
+    const x = lane * lw + 5;
+
+    const past = t < now;
+    g.fillStyle = past ? color.dim : color.phos;
+    g.fillRect(x, y - nh / 2, lw - 10, nh);
+  }
+
+  // 판정선
+  g.strokeStyle = color.amber;
+  g.lineWidth = 2;
+  g.beginPath(); g.moveTo(0, lineY); g.lineTo(W, lineY); g.stroke();
+  g.lineWidth = 1;
+
+  // 키 표시 + 방금 찍은 잔상
+  g.font = '13px monospace';
+  g.textAlign = 'center';
+  for(let i = 0; i < CFG.LANES; i++){
+    if(flash[i] > 0){
+      g.fillStyle = 'rgba(44,255,136,' + (flash[i] * 0.35) + ')';
+      g.fillRect(i * lw + 2, lineY, lw - 4, H - lineY);
+      flash[i] = Math.max(0, flash[i] - 0.06);
+    }
+    g.fillStyle = color.mid;
+    g.fillText(keyLabel(CFG.KEYS[i]), i * lw + lw / 2, H - 16);
+  }
+  g.textAlign = 'left';
+
+  // 아래쪽 정보
+  $('nTime').textContent = fmt(now, true);
+  const b = beatNoOf(now);
+  $('nBeat').textContent = isFinite(b) ? (Math.floor(b / 4) + 1) + ' : ' + (((Math.floor(b) % 4) + 4) % 4 + 1) : '–';
+
+  if(isFinite(audio.duration)){
+    $('played').style.width = (now / audio.duration * 100) + '%';
+    $('head').style.left = (now / audio.duration * 100) + '%';
+    const L = Math.max(0, ra) / audio.duration * 100;
+    const R = Math.min(audio.duration, rb) / audio.duration * 100;
+    $('regionBox').style.left = L + '%';
+    $('regionBox').style.width = Math.max(0, R - L) + '%';
+  }
+}
+draw();
+
+
+/* =========================================================
+   잡다한 것
+   ========================================================= */
+function fmt(s, ms){
+  if(!isFinite(s)) return '--:--';
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  const base = String(m).padStart(2,'0') + ':' + String(Math.floor(sec)).padStart(2,'0');
+  return ms ? base + '.' + String(Math.floor((sec % 1) * 1000)).padStart(3,'0') : base;
+}
+
+function say(t){ $('msg').textContent = t; }
+
+let saveTimer = 0;
+function refresh(){
+  $('nCount').textContent = notes.length;
+  const last = notes[notes.length - 1];
+  $('nLast').textContent = last ? fmt(last[0], true) + ' / ' + keyLabel(CFG.KEYS[last[1]]) : '–';
+
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 400);   // 너무 자주 저장하면 느려진다
+}
+
+$('undoBtn').addEventListener('click', undo);
+$('delBtn').addEventListener('click', delNear);
+
+readInputs();
+load();
+if(!audio.src) loadSong();
+</script>
+</body>
+</html>
