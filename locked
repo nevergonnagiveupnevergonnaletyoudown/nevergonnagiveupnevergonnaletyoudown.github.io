@@ -164,7 +164,7 @@
     <span class="tag">[Execute]</span>
   </button>
 
-  <button class="item done" disabled>
+  <button class="item" data-go="rhythm.html">
     <span class="num">002</span>
     <span class="body-txt">
       <span class="t">RHYTHM</span>
