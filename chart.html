@@ -154,6 +154,26 @@ textarea{ width:100%; height:90px; resize:vertical; font-size:11px; }
 
   <canvas id="view"></canvas>
 
+  <!-- ---------- 자동 생성 ---------- -->
+  <div class="bar">
+    <span class="lbl">AUTO</span>
+    <button class="btn amber" id="autoBtn">GENERATE A~B</button>
+
+    <span class="lbl">감도</span>
+    <input type="number" id="sens" value="1.35" min="1" max="3" step="0.05">
+
+    <span class="lbl">최소간격</span>
+    <select id="gap">
+      <option value="1">1박</option>
+      <option value="0.5" selected>1/2박</option>
+      <option value="0.25">1/4박</option>
+    </select>
+
+    <label class="lbl" style="display:flex;align-items:center;gap:5px">
+      <input type="checkbox" id="wipe" checked> 기존 노트 지우고
+    </label>
+  </div>
+
   <div class="stat">
     <span>NOTES <b id="nCount">0</b></span>
     <span>TIME <b id="nTime">00:00.000</b></span>
@@ -208,7 +228,15 @@ const CFG = {
   SCHED_AHEAD: 0.12,        // 메트로놈을 몇 초 앞까지 미리 예약할지
   SCHED_TICK: 25,           // 예약 담당이 도는 간격(ms)
 
-  SAVE_KEY: 'nv-chart-draft'
+  SAVE_KEY: 'nv-chart-draft',
+
+  /* ---------- 자동 생성 ----------
+     소리가 갑자기 커지는 순간을 찾아서 노트를 찍는다 */
+  AUTO_FFT: 1024,      // 한 번에 분석할 샘플 수. 2의 거듭제곱만 가능
+  AUTO_HOP: 512,       // 분석 간격. 작을수록 정밀하지만 느려진다
+  AUTO_WIN: 14,        // 주변 몇 칸의 평균과 비교할지
+  AUTO_LO: 60,         // 레인 배치에 쓸 최저 주파수(Hz) → 맨 왼쪽
+  AUTO_HI: 6000        // 레인 배치에 쓸 최고 주파수(Hz) → 맨 오른쪽
 };
 
 /* 목록에 띄울 곡들 */
@@ -573,6 +601,201 @@ function bindKey(k){
 }
 
 drawKeys();
+
+
+/* =========================================================
+   자동 생성
+
+   흐름:
+     1. mp3 를 통째로 받아서 숫자 배열(파형)로 푼다
+     2. 아주 짧은 토막으로 잘라서 각 토막의 주파수 분포를 구한다
+     3. 앞 토막보다 "커진 정도"를 전부 더한다 = 변화량
+     4. 변화량이 주변 평균보다 확 튀는 지점 = 소리가 시작된 순간
+     5. 그 지점들을 격자에 붙이고 레인을 나눠준다
+
+   ★ 이건 초안이다. 기계는 "소리가 났다"만 알지
+     "그게 칠 만한가"는 모른다. 반드시 손으로 다듬어야 한다.
+   ========================================================= */
+
+/* ---------- FFT ----------
+   소리 토막 하나를 주파수별 세기로 바꾸는 계산.
+   내용을 이해할 필요는 없다. 교과서에 나오는 그대로다. */
+function fft(re, im){
+  const n = re.length;
+
+  for(let i = 1, j = 0; i < n; i++){
+    let bit = n >> 1;
+    for(; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if(i < j){
+      let t = re[i]; re[i] = re[j]; re[j] = t;
+      t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+
+  for(let len = 2; len <= n; len <<= 1){
+    const ang = -2 * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    const half = len >> 1;
+    for(let i = 0; i < n; i += len){
+      let cr = 1, ci = 0;
+      for(let k = 0; k < half; k++){
+        const ur = re[i+k], ui = im[i+k];
+        const vr = re[i+k+half] * cr - im[i+k+half] * ci;
+        const vi = re[i+k+half] * ci + im[i+k+half] * cr;
+        re[i+k] = ur + vr;       im[i+k] = ui + vi;
+        re[i+k+half] = ur - vr;  im[i+k+half] = ui - vi;
+        const ncr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = ncr;
+      }
+    }
+  }
+}
+
+/* 디코딩은 오래 걸리니 한 번 한 곡은 기억해둔다 */
+let decoded = { src: '', buf: null };
+
+async function getBuffer(){
+  if(decoded.src === audio.src && decoded.buf) return decoded.buf;
+
+  const res = await fetch(audio.src);
+  if(!res.ok) throw new Error('파일을 못 읽었다 (' + res.status + ')');
+  const raw = await res.arrayBuffer();
+
+  const buf = await actx.decodeAudioData(raw);
+  decoded = { src: audio.src, buf: buf };
+  return buf;
+}
+
+async function autoGen(){
+  ensureCtx();
+  if(!actx){ say('이 브라우저에서는 자동 생성이 안 된다'); return; }
+  if(actx.state === 'suspended') await actx.resume();
+
+  const A = Number($('rStart').value);
+  const B = Number($('rEnd').value);
+  if(!(B > A)){ say('REGION 을 먼저 정해라 (A < B)'); return; }
+
+  $('autoBtn').disabled = true;
+  say('디코딩 중... 곡이 길면 몇 초 걸린다');
+
+  try{
+    const buf = await getBuffer();
+    await new Promise(r => setTimeout(r, 30));      // 화면이 멈춘 것처럼 보이지 않게
+    say('분석 중...');
+
+    const sr = buf.sampleRate;
+    const N = CFG.AUTO_FFT;
+    const HOP = CFG.AUTO_HOP;
+
+    /* 채널을 하나로 합친다. 스테레오면 좌우 평균 */
+    const ch0 = buf.getChannelData(0);
+    const ch1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
+
+    // 분석 구간 (앞뒤로 조금 여유를 둔다)
+    const from = Math.max(0, Math.floor((A - 0.2) * sr));
+    const to   = Math.min(buf.length, Math.ceil((B + 0.2) * sr));
+
+    // 미리 계산해두는 창 함수 — 토막 가장자리를 부드럽게 깎는다
+    const win = new Float32Array(N);
+    for(let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+
+    const re = new Float32Array(N);
+    const im = new Float32Array(N);
+    const prev = new Float32Array(N / 2);
+
+    const flux = [];      // 토막별 변화량
+    const cent = [];      // 토막별 무게중심 주파수 (레인 정하는 데 씀)
+
+    for(let s = from; s + N < to; s += HOP){
+      for(let i = 0; i < N; i++){
+        const v = ch1 ? (ch0[s+i] + ch1[s+i]) * 0.5 : ch0[s+i];
+        re[i] = v * win[i];
+        im[i] = 0;
+      }
+      fft(re, im);
+
+      let sum = 0, wsum = 0, msum = 0;
+      for(let k = 1; k < N / 2; k++){
+        const mag = Math.sqrt(re[k]*re[k] + im[k]*im[k]);
+        const d = mag - prev[k];
+        if(d > 0) sum += d;                 // 커진 것만 센다. 줄어든 건 무시
+        prev[k] = mag;
+
+        const f = k * sr / N;
+        if(f >= CFG.AUTO_LO && f <= CFG.AUTO_HI){ wsum += f * mag; msum += mag; }
+      }
+      flux.push(sum);
+      cent.push(msum > 0 ? wsum / msum : CFG.AUTO_LO);
+    }
+
+    /* ---------- 봉우리 찾기 ----------
+       고정된 기준값을 쓰면 조용한 부분은 다 놓치고
+       시끄러운 부분은 전부 걸린다.
+       그래서 "주변 평균보다 몇 배인가"로 본다. */
+    const SENS = Math.max(1, Number($('sens').value) || 1.35);
+    const W = CFG.AUTO_WIN;
+    const minGap = beatLen() * Number($('gap').value);
+
+    const hits = [];
+    let lastT = -1e9;
+
+    for(let i = 1; i < flux.length - 1; i++){
+      if(flux[i] <= flux[i-1] || flux[i] < flux[i+1]) continue;   // 봉우리가 아님
+
+      let sum = 0, cnt = 0;
+      for(let j = Math.max(0, i - W); j <= Math.min(flux.length - 1, i + W); j++){ sum += flux[j]; cnt++; }
+      const mean = sum / cnt;
+      if(mean <= 0 || flux[i] < mean * SENS) continue;
+
+      const t = (from + i * HOP) / sr;
+      if(t < A || t > B) continue;
+      if(t - lastT < minGap) continue;
+
+      lastT = t;
+      hits.push([t, cent[i]]);
+    }
+
+    /* ---------- 레인 배치 ----------
+       낮은 소리는 왼쪽, 높은 소리는 오른쪽.
+       사람이 치기 편하고 곡이랑도 자연스럽게 맞는다. */
+    const lo = Math.log(CFG.AUTO_LO), hi = Math.log(CFG.AUTO_HI);
+    const made = [];
+    let prevLane = -1;
+
+    for(const [t, c] of hits){
+      const r = (Math.log(Math.min(CFG.AUTO_HI, Math.max(CFG.AUTO_LO, c))) - lo) / (hi - lo);
+      let lane = Math.min(CFG.LANES - 1, Math.floor(r * CFG.LANES));
+
+      // 같은 레인이 연달아 나오면 한 칸 옆으로. 연타보다 번갈아 치는 게 훨씬 낫다
+      if(lane === prevLane) lane = (lane + 1) % CFG.LANES;
+      prevLane = lane;
+
+      made.push([snap(t), lane]);
+    }
+
+    /* ---------- 합치기 ---------- */
+    if($('wipe').checked) notes = notes.filter(n => n[0] < A || n[0] > B);
+
+    for(const m of made){
+      const dup = notes.some(n => n[1] === m[1] && Math.abs(n[0] - m[0]) < 0.012);
+      if(!dup) notes.push(m);
+    }
+    notes.sort((a, b) => a[0] - b[0]);
+    refresh();
+
+    const secs = B - A;
+    say('노트 ' + made.length + '개 생성 · 초당 ' + (made.length / secs).toFixed(1) + '개 · 이제 손으로 다듬어라');
+
+  }catch(err){
+    say('실패: ' + err.message);
+  }finally{
+    $('autoBtn').disabled = false;
+  }
+}
+
+$('autoBtn').addEventListener('click', autoGen);
 
 
 $('rSetA').addEventListener('click', () => { $('rStart').value = audio.currentTime.toFixed(2); readInputs(); });$('rSetB').addEventListener('click', () => { $('rEnd').value   = audio.currentTime.toFixed(2); readInputs(); });
