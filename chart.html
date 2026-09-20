@@ -158,10 +158,18 @@ textarea{ width:100%; height:90px; resize:vertical; font-size:11px; }
   <!-- ---------- 자동 생성 ---------- -->
   <div class="bar">
     <span class="lbl">AUTO</span>
-    <button class="btn amber" id="autoBtn">GENERATE A~B</button>
+    <button class="btn amber" id="fullBtn">GENERATE FULL SONG</button>
+    <button class="btn" id="autoBtn">A~B 구간만</button>
 
-    <span class="lbl">감도</span>
-    <input type="number" id="sens" value="1.35" min="1" max="3" step="0.05">
+    <span class="lbl">난이도</span>
+    <select id="diff">
+      <option value="1.6">EASY</option>
+      <option value="2.6" selected>NORMAL</option>
+      <option value="4.0">HARD</option>
+    </select>
+
+    <span class="lbl">초당 노트</span>
+    <input type="number" id="nps" value="2.6" min="0.5" max="8" step="0.1">
 
     <span class="lbl">최소간격</span>
     <select id="gap">
@@ -169,10 +177,11 @@ textarea{ width:100%; height:90px; resize:vertical; font-size:11px; }
       <option value="0.5" selected>1/2박</option>
       <option value="0.25">1/4박</option>
     </select>
+  </div>
 
-    <label class="lbl" style="display:flex;align-items:center;gap:5px">
-      <input type="checkbox" id="wipe" checked> 기존 노트 지우고
-    </label>
+  <div class="bar">
+    <button class="btn" id="clickBtn">NOTE CLICK</button>
+    <span class="lbl">노트 자리에서 딸깍 소리가 난다. 곡과 맞는지 귀로 확인하는 용도</span>
   </div>
 
   <div class="stat">
@@ -837,63 +846,270 @@ async function detectTempo(){
 $('detBtn').addEventListener('click', detectTempo);
 
 
-async function autoGen(){
+/* =========================================================
+   자동 생성 — 감지 + 다듬기
+
+   예전 방식은 "소리가 난 곳"을 전부 노트로 만들었다.
+   감지는 잘 됐지만 그게 곧 칠 수 있는 채보는 아니다.
+   그래서 다듬는 단계를 넣었다.
+
+     1) 곡 전체의 변화량 곡선을 한 번만 구한다
+     2) 16초씩 잘라서 구간마다 BPM/오프셋을 따로 잰다
+        → 곡 템포가 흔들려도 구간마다 다시 맞추니까 안 어긋난다
+     3) 구간마다 후보를 넉넉하게 뽑는다 (기준을 낮게)
+     4) "소리가 센 것 + 박자 좋은 자리" 순으로 목표 개수만큼만 고른다
+        → 밀도가 일정해진다. 시끄러운 데서 폭발하지 않는다
+     5) 너무 오래 빈 곳은 정박으로 채운다
+     6) 칠 수 있는 손놀림이 되도록 레인을 배치한다
+   ========================================================= */
+
+const GEN = {
+  CHUNK: 16,          // 구간 길이(초). 짧을수록 템포 변화를 잘 따라간다
+
+  PICK_SENS: 1.05,    // 후보를 뽑는 기준. 일부러 낮다. 많이 뽑고 나중에 고른다
+
+  BAR_W: 1.0,         // 마디 첫 박 가산점
+  BEAT_W: 0.8,        // 정박
+  HALF_W: 0.5,        // 8분음표 자리
+  ELSE_W: 0.25,       // 그 외
+  BEAT_BONUS: 1.2,    // 박자 좋은 자리를 얼마나 밀어줄지. 0 이면 세기만 본다
+
+  FILL_GAP: 2.2,      // 이 박자 수 이상 비면 채운다
+  FILL_FLOOR: 0.25,   // 그 구간 소리가 이 비율보다 조용하면 안 채운다
+
+  JACK_MIN: 0.14,     // 같은 레인을 다시 누르기까지 필요한 최소 시간(초)
+  HAND_MIN: 0.075     // 이보다 촘촘하면 반대쪽 손으로 넘긴다
+};
+
+const tick0 = () => new Promise(r => setTimeout(r, 0));
+
+/* 이 자리가 박자상 얼마나 좋은 자리인지 */
+function gridWeight(t, bpm, off){
+  const beat = 60 / bpm;
+  const pos = (t - off) / beat;
+
+  if(Math.abs(pos - Math.round(pos)) < 0.02){
+    const b = ((Math.round(pos) % 4) + 4) % 4;
+    return b === 0 ? GEN.BAR_W : GEN.BEAT_W;
+  }
+  if(Math.abs(pos * 2 - Math.round(pos * 2)) < 0.02) return GEN.HALF_W;
+  return GEN.ELSE_W;
+}
+
+/* 구간 전용 스냅 (구간마다 BPM 이 다르므로 전역 snap 과 따로 둔다) */
+function snapG(t, bpm, off, div){
+  if(!div) return t;
+  const step = 60 / bpm / div;
+  return off + Math.round((t - off) / step) * step;
+}
+
+/* 한 구간의 BPM/오프셋을 잰다.
+   seed 가 있으면 그 근처만 본다 — 빠르고, 구간끼리 값이 튀지 않는다. */
+function detectIn(f, a, A, B, seed){
+  const sc = (bpm, off) => gridScore(f, a.fps, a.t0, bpm, off, A, B);
+
+  const fine = (c, span, step, ostep) => {
+    let b = { s: -1, bpm: c, off: A };
+    for(let bpm = c - span; bpm <= c + span; bpm += step){
+      if(bpm < 40 || bpm > 260) continue;
+      const beat = 60 / bpm;
+      for(let o = 0; o < beat; o += ostep){
+        const s = sc(bpm, A + o);
+        if(s > b.s) b = { s: s, bpm: bpm, off: A + o };
+      }
+    }
+    return b;
+  };
+
+  if(seed >= 60) return fine(seed, 3.0, 0.02, 0.004);
+
+  // 씨앗이 없을 때만 넓게 훑는다
+  let base = { s: -1, bpm: 120, off: A };
+  for(let bpm = 60; bpm <= 240; bpm += 0.25){
+    const beat = 60 / bpm;
+    for(let o = 0; o < beat; o += beat / 40){
+      const s = sc(bpm, A + o);
+      if(s > base.s) base = { s: s, bpm: bpm, off: A + o };
+    }
+  }
+  base = fine(base.bpm, 0.6, 0.01, 0.002);
+
+  /* ---------- 배수 접기 ----------
+     ★ 이걸 안 하면 거의 항상 느린 값이 나온다.
+       성긴 격자는 강한 박자만 골라 밟아서 "칸당 평균 점수"가 더 높게 나오기 때문.
+
+     ★ 2배만 보면 안 된다. 1.5배(셋잇단 느낌)에 걸리는 경우가 흔하다.
+       실제로 이 곡이 그랬다 — 191.4 를 127.6 으로 잡았다.
+       그래서 배수를 여러 개 시험하고, 점수가 충분히 살아있는 것 중
+       가장 빠른 쪽을 고른다. */
+  let best = base;
+  for(const m of [1.5, 2, 3, 4]){
+    const c = base.bpm * m;
+    if(c > 240) break;
+    const b2 = fine(c, 1.0, 0.01, 0.002);
+    if(b2.s >= base.s * 0.55 && b2.bpm > best.bpm) best = b2;
+  }
+  return best;
+}
+
+
+async function generate(full){
   ensureCtx();
   if(!actx){ say('이 브라우저에서는 자동 생성이 안 된다'); return; }
   if(actx.state === 'suspended') await actx.resume();
 
-  const A = Number($('rStart').value);
-  const B = Number($('rEnd').value);
-  if(!(B > A)){ say('REGION 을 먼저 정해라 (A < B)'); return; }
+  const A = full ? 0 : Number($('rStart').value);
+  const B = full ? (isFinite(audio.duration) ? audio.duration : Number($('rEnd').value))
+                 : Number($('rEnd').value);
+  if(!(B - A >= 5)){ say('구간이 너무 짧다'); return; }
 
-  $('autoBtn').disabled = true;
-  say('디코딩 중... 곡이 길면 몇 초 걸린다');
+  $('fullBtn').disabled = $('autoBtn').disabled = true;
+  say('디코딩 중...');
 
   try{
     const buf = await getBuffer();
-    await new Promise(r => setTimeout(r, 30));      // 화면이 멈춘 것처럼 보이지 않게
-    say('분석 중...');
+    await tick0();
+    say('분석 중... 곡 전체면 몇 초 걸린다');
+    await tick0();
 
-    /* 변화량 곡선을 구한다 (레인 배치용 무게중심도 같이) */
-    const a = fluxOf(buf, A, B, true);
-    const flux = a.flux, cent = a.cent;
+    const a  = fluxOf(buf, A, B, true);
+    const fs = sharpen(a.flux, CFG.AUTO_WIN * 3);     // 템포 측정용
+    await tick0();
 
-    /* ---------- 봉우리 찾기 ----------
-       고정된 기준값을 쓰면 조용한 부분은 다 놓치고
-       시끄러운 부분은 전부 걸린다.
-       그래서 "주변 평균보다 몇 배인가"로 본다. */
-    const SENS = Math.max(1, Number($('sens').value) || 1.35);
-    const W = CFG.AUTO_WIN;
-    const minGap = beatLen() * Number($('gap').value);
+    const nps    = Math.max(0.3, Number($('nps').value) || 2.6);
+    const gapVal = Number($('gap').value);             // 박 단위
+    const div    = Math.round(1 / gapVal);             // 스냅 분할 수 (1, 2, 4)
 
-    const hits = [];
-    let lastT = -1e9;
+    // 전체 평균 세기 — 빈 구간을 채울지 말지 판단할 기준
+    let fmean = 0;
+    for(const v of a.flux) fmean += v;
+    fmean /= (a.flux.length || 1);
 
-    for(let i = 1; i < flux.length - 1; i++){
-      if(flux[i] <= flux[i-1] || flux[i] < flux[i+1]) continue;   // 봉우리가 아님
+    const picked = [];                 // { t, cent }
+    let firstGrid = null;
 
-      let sum = 0, cnt = 0;
-      for(let j = Math.max(0, i - W); j <= Math.min(flux.length - 1, i + W); j++){ sum += flux[j]; cnt++; }
-      const mean = sum / cnt;
-      if(mean <= 0 || flux[i] < mean * SENS) continue;
+    const nCh  = Math.max(1, Math.round((B - A) / GEN.CHUNK));
+    const chLen = (B - A) / nCh;
 
-      const t = a.t0 + i / a.fps;
-      if(t < A || t > B) continue;
-      if(t - lastT < minGap) continue;
+    /* ---------- 기준 BPM 정하기 ----------
+       ★ 첫 구간 하나만 보고 정하면 안 된다.
+         인트로는 박자가 흐릿해서 엉뚱한 값이 나오기 쉽고,
+         그 값이 씨앗이 되면 곡 전체가 통째로 어긋난다.
+         그래서 여러 군데서 재보고 가장 선명한 것을 고른다. */
+    say('기준 박자 찾는 중...');
+    await tick0();
 
-      lastT = t;
-      hits.push([t, cent[i]]);
+    let seed = 0;
+    {
+      const spots = [0.15, 0.45, 0.75].map(r => A + (B - A) * r);
+      let bestSeed = null;
+      for(const s0 of spots){
+        const s1 = Math.min(B, s0 + Math.min(chLen, 16));
+        if(s1 - s0 < 5) continue;
+        const g = detectIn(fs, a, s0, s1, 0);
+        if(!bestSeed || g.s > bestSeed.s) bestSeed = g;
+        await tick0();
+      }
+      if(bestSeed) seed = bestSeed.bpm;
     }
 
-    /* ---------- 레인 배치 ----------
-       낮은 소리는 왼쪽, 높은 소리는 오른쪽.
+    for(let c = 0; c < nCh; c++){
+      const c0 = A + c * chLen;
+      const c1 = Math.min(B, c0 + chLen);
 
-       ★ 주파수 절대값으로 나누면 안 된다.
-         꽉 찬 곡은 무게중심이 죄다 2~3kHz 에 몰려서
-         전부 오른쪽 레인 하나로 쏠린다.
-         그래서 "이 곡 안에서 몇 등인가"(순위)로 나눈다.
-         그러면 네 레인에 고르게 퍼진다. */
-    const sorted = hits.map(h => h[1]).sort((p, q) => p - q);
+      say('구간 ' + (c + 1) + ' / ' + nCh + ' 처리 중...');
+      await tick0();
+
+      const g = detectIn(fs, a, c0, c1, seed);
+      seed = g.bpm;
+      if(!firstGrid) firstGrid = g;
+
+      const beat = 60 / g.bpm;
+      const minGap = beat * gapVal;
+
+      /* ---------- 후보 뽑기 ---------- */
+      const cand = new Map();          // 스냅된 시각 → 가장 좋은 후보
+
+      for(let i = 1; i < a.flux.length - 1; i++){
+        if(a.flux[i] <= a.flux[i-1] || a.flux[i] < a.flux[i+1]) continue;
+
+        const t = a.t0 + i / a.fps;
+        if(t < c0 || t >= c1) continue;
+
+        let s = 0, n = 0;
+        for(let j = Math.max(0, i - CFG.AUTO_WIN); j <= Math.min(a.flux.length - 1, i + CFG.AUTO_WIN); j++){ s += a.flux[j]; n++; }
+        const mean = s / n;
+        if(mean <= 0) continue;
+
+        const strength = a.flux[i] / mean;
+        if(strength < GEN.PICK_SENS) continue;
+
+        const ts = snapG(t, g.bpm, g.off, div);
+        const score = strength * (1 + GEN.BEAT_BONUS * gridWeight(ts, g.bpm, g.off));
+
+        const key = ts.toFixed(3);
+        const old = cand.get(key);
+        if(!old || score > old.score) cand.set(key, { t: ts, cent: a.cent[i], score: score });
+      }
+
+      /* ---------- 목표 개수만큼만 고르기 ----------
+         센 것부터 집되, 이미 집은 노트와 너무 가까우면 건너뛴다.
+         이렇게 하면 시끄러운 구간에서 노트가 폭발하지 않는다. */
+      const list = Array.from(cand.values()).sort((p, q) => q.score - p.score);
+      const target = Math.round(nps * (c1 - c0));
+      const sel = [];
+
+      for(const v of list){
+        if(sel.length >= target) break;
+        let ok = true;
+        for(const u of sel) if(Math.abs(u.t - v.t) < minGap - 1e-4){ ok = false; break; }
+        if(ok) sel.push(v);
+      }
+      sel.sort((p, q) => p.t - q.t);
+
+      /* ---------- 빈 곳 채우기 ----------
+         리듬게임은 손이 계속 움직여야 재밌다.
+         단 두 가지를 지킨다.
+           · 진짜 조용한 구간(인트로, 간주)은 그냥 둔다
+           · ★ 채우는 간격도 목표 밀도를 따른다.
+             정박마다 무조건 채우면 EASY 를 골라도
+             초당 3개가 나와버린다. 실제로 그랬다. */
+      const energyAt = t => {
+        const i = Math.round((t - a.t0) * a.fps);
+        let s = 0, n = 0;
+        for(let j = Math.max(0, i - 8); j <= Math.min(a.flux.length - 1, i + 8); j++){ s += a.flux[j]; n++; }
+        return n ? s / n : 0;
+      };
+
+      const fillStep = Math.max(1, Math.round((1 / nps) / beat));   // 몇 박마다 채울지
+      const fillThresh = Math.max(GEN.FILL_GAP, fillStep * 2) * beat;
+
+      const filled = [];
+      for(let i = 0; i < sel.length; i++){
+        filled.push(sel[i]);
+        const nx = sel[i + 1];
+        if(!nx) continue;
+        if(nx.t - sel[i].t <= fillThresh) continue;
+
+        const start = snapG(sel[i].t + fillStep * beat, g.bpm, g.off, 1);
+        for(let t = start; t < nx.t - beat * 0.5; t += fillStep * beat){
+          if(t <= sel[i].t + beat * 0.5) continue;
+          if(energyAt(t) < fmean * GEN.FILL_FLOOR) continue;
+          filled.push({ t: t, cent: a.cent[Math.max(0, Math.round((t - a.t0) * a.fps))] || CFG.AUTO_LO, score: 0 });
+        }
+      }
+
+      for(const v of filled) picked.push(v);
+    }
+
+    picked.sort((p, q) => p.t - q.t);
+
+    /* ---------- 레인 배치 ----------
+       높낮이 순위로 자리를 정하되, 손이 꼬이는 배치는 막는다. */
+    say('레인 배치 중...');
+    await tick0();
+
+    const sorted = picked.map(v => v.cent).sort((p, q) => p - q);
     const rankOf = c => {
       let lo = 0, hi = sorted.length;
       while(lo < hi){ const m = (lo + hi) >> 1; if(sorted[m] < c) lo = m + 1; else hi = m; }
@@ -901,43 +1117,110 @@ async function autoGen(){
     };
 
     const made = [];
-    let prevLane = -1;
+    let prevLane = -1, prevT = -1e9;
 
-    for(const [t, c] of hits){
-      let lane = Math.min(CFG.LANES - 1, Math.floor(rankOf(c) * CFG.LANES));
+    for(const v of picked){
+      const want = Math.min(CFG.LANES - 1, Math.floor(rankOf(v.cent) * CFG.LANES));
+      const dt = v.t - prevT;
 
-      /* 같은 레인 연타는 재미없으니 한 칸 옆으로 민다.
-         ★ 끝 레인에서 반대쪽 끝으로 넘기면(3→0) 손이 건반을 가로지른다.
-           그래서 가장자리는 안쪽으로만 민다. */
-      if(lane === prevLane){
-        if(lane === 0) lane = 1;
-        else if(lane === CFG.LANES - 1) lane = CFG.LANES - 2;
-        else lane = lane + 1;
+      const banned = new Set();
+      // 같은 레인 연타는 빠르면 못 친다
+      if(prevLane >= 0 && dt < GEN.JACK_MIN) banned.add(prevLane);
+      // 아주 촘촘하면 아예 반대쪽 손으로
+      if(prevLane >= 0 && dt < GEN.HAND_MIN){
+        const left = prevLane < CFG.LANES / 2;
+        for(let L = 0; L < CFG.LANES; L++) if((L < CFG.LANES / 2) === left) banned.add(L);
       }
-      prevLane = lane;
 
-      made.push([snap(t), lane]);
+      let lane = want;
+      if(banned.has(lane)){
+        let bd = 99;
+        for(let L = 0; L < CFG.LANES; L++){
+          if(banned.has(L)) continue;
+          const d = Math.abs(L - want);
+          if(d < bd){ bd = d; lane = L; }
+        }
+      }
+
+      made.push([Number(v.t.toFixed(4)), lane]);
+      prevLane = lane;
+      prevT = v.t;
     }
 
     /* ---------- 합치기 ---------- */
-    if($('wipe').checked) notes = notes.filter(n => n[0] < A || n[0] > B);
-
-    for(const m of made){
-      const dup = notes.some(n => n[1] === m[1] && Math.abs(n[0] - m[0]) < 0.012);
-      if(!dup) notes.push(m);
-    }
-    notes.sort((a, b) => a[0] - b[0]);
+    notes = notes.filter(n => n[0] < A || n[0] > B);
+    for(const m of made) notes.push(m);
+    notes.sort((p, q) => p[0] - q[0]);
     refresh();
 
-    const secs = B - A;
-    say('노트 ' + made.length + '개 생성 · 초당 ' + (made.length / secs).toFixed(1) + '개 · 이제 손으로 다듬어라');
+    // 첫 구간 값을 화면에 넣어준다 (격자가 대충 맞게 보이도록)
+    if(firstGrid){
+      const beat = 60 / firstGrid.bpm;
+      $('bpm').value = firstGrid.bpm.toFixed(2);
+      $('offset').value = (((firstGrid.off % beat) + beat) % beat).toFixed(3);
+      readInputs();
+    }
+
+    const dens = made.length / (B - A);
+    say('노트 ' + made.length + '개 · 초당 ' + dens.toFixed(2) + '개 · 구간 ' + nCh + '개로 나눠 처리함');
 
   }catch(err){
     say('실패: ' + err.message);
   }finally{
-    $('autoBtn').disabled = false;
+    $('fullBtn').disabled = $('autoBtn').disabled = false;
   }
 }
+
+function autoGen(){ return generate(false); }
+$('fullBtn').addEventListener('click', () => generate(true));
+
+/* 난이도를 고르면 초당 노트 수가 따라온다 */
+$('diff').addEventListener('change', () => { $('nps').value = $('diff').value; });
+
+
+/* =========================================================
+   노트 딸깍 소리
+
+   ★ 채보가 맞는지 확인하는 제일 빠른 방법이다.
+     눈으로 보는 것보다 귀가 훨씬 정확하다.
+     곡과 딸깍이 한 몸처럼 들리면 맞는 거고,
+     따로 놀면 어긋난 거다.
+   ========================================================= */
+let clickOn = false;
+let lastClicked = -1e9;
+
+$('clickBtn').addEventListener('click', () => {
+  ensureCtx();
+  if(actx && actx.state === 'suspended') actx.resume();
+  clickOn = !clickOn;
+  lastClicked = -1e9;
+  $('clickBtn').classList.toggle('on', clickOn);
+});
+
+setInterval(() => {
+  if(!clickOn || audio.paused || !actx) return;
+
+  const now = audio.currentTime;
+  if(now < lastClicked - 0.3) lastClicked = now - 0.001;   // 뒤로 감았을 때
+
+  const horizon = now + CFG.SCHED_AHEAD * rate;
+
+  for(const [t, lane] of notes){
+    if(t <= lastClicked) continue;
+    if(t > horizon) break;
+    if(t >= now){
+      const osc = actx.createOscillator();
+      const gn = actx.createGain();
+      osc.frequency.value = 700 + lane * 260;      // 레인마다 음높이를 다르게
+      gn.gain.setValueAtTime(0.22, actx.currentTime + (t - now) / rate);
+      gn.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + (t - now) / rate + 0.04);
+      osc.connect(gn).connect(actx.destination);
+      osc.start(actx.currentTime + (t - now) / rate);
+      osc.stop(actx.currentTime + (t - now) / rate + 0.05);
+    }
+    lastClicked = t;
+  }
+}, CFG.SCHED_TICK);
 
 $('autoBtn').addEventListener('click', autoGen);
 
