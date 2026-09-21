@@ -166,6 +166,7 @@ textarea{ width:100%; height:90px; resize:vertical; font-size:11px; }
       <option value="1.6" data-chord="0"  data-gap="1"    data-pat="0">EASY</option>
       <option value="2.6" data-chord="8"  data-gap="0.5"  data-pat="18" selected>NORMAL</option>
       <option value="4.0" data-chord="26" data-gap="0.25" data-pat="45">HARD</option>
+      <option value="5.4" data-chord="34" data-gap="0.25" data-pat="60" data-jt="1">VERY HARD</option>
     </select>
 
     <span class="lbl">초당 노트</span>
@@ -183,6 +184,16 @@ textarea{ width:100%; height:90px; resize:vertical; font-size:11px; }
       <option value="0.5" selected>1/2박</option>
       <option value="0.25">1/4박</option>
     </select>
+  </div>
+
+  <div class="bar">
+    <span class="lbl">시드</span>
+    <input type="number" id="seed" value="1" min="1" step="1" style="width:70px">
+    <button class="btn" id="seedBtn">🎲</button>
+    <label class="lbl" style="display:flex;align-items:center;gap:5px">
+      <input type="checkbox" id="rep" checked> 반복 구간에 같은 채보
+    </label>
+    <span class="lbl">같은 시드 = 같은 채보. 마음에 드는 게 나오면 숫자를 적어둬라</span>
   </div>
 
   <div class="bar">
@@ -720,15 +731,17 @@ function fluxOf(buf, A, B){
   // 각 칸이 어느 대역인지 미리 정해둔다 (매 프레임 계산하면 느리다)
   const half = N / 2;
   const band = new Uint8Array(half);
+  const lg = new Float32Array(half);          // 주파수의 로그값 (멜로디 높이 계산용)
   for(let k = 1; k < half; k++){
     const f = k * sr / N;
     band[k] = f < CFG.B_LOW ? 1 : f < CFG.B_MID ? 2 : (f < CFG.B_TOP ? 3 : 0);
+    lg[k] = Math.log2(f);
   }
 
   const re = new Float32Array(N), im = new Float32Array(N);
   const prev = new Float32Array(half);
 
-  const flux = [], bL = [], bM = [], bH = [], energy = [];
+  const flux = [], bL = [], bM = [], bH = [], energy = [], pitch = [];
 
   for(let s = from; s + N < to; s += HOP){
     for(let i = 0; i < N; i++){
@@ -738,21 +751,25 @@ function fluxOf(buf, A, B){
     }
     fft(re, im);
 
-    let tot = 0, l = 0, m = 0, hi = 0, e = 0;
+    let tot = 0, l = 0, m = 0, hi = 0, e = 0, pw = 0, pws = 0;
     for(let k = 1; k < half; k++){
       const mag = Math.sqrt(re[k]*re[k] + im[k]*im[k]);
       const d = mag - prev[k];
       prev[k] = mag;
       e += mag;
+      /* 멜로디 높이: MID 대역에서 센 소리 쪽으로 기운 평균 높이.
+         제곱해서 가중하면 제일 두드러진 음 쪽으로 끌려간다 */
+      if(band[k] === 2){ const m2 = mag * mag; pw += m2 * lg[k]; pws += m2; }
       if(d <= 0) continue;                 // 커진 것만 센다
       tot += d;
       const b = band[k];
       if(b === 1) l += d; else if(b === 2) m += d; else if(b === 3) hi += d;
     }
     flux.push(tot); bL.push(l); bM.push(m); bH.push(hi); energy.push(e);
+    pitch.push(pws > 0 ? pw / pws : 0);
   }
 
-  return { flux:flux, L:bL, M:bM, H:bH, energy:energy, t0: from / sr, fps: sr / HOP };
+  return { flux:flux, L:bL, M:bM, H:bH, energy:energy, pitch:pitch, t0: from / sr, fps: sr / HOP };
 }
 
 /* 국소 평균을 빼서 "조용한 데는 다 놓치고 시끄러운 데는 다 걸리는" 편향을 없앤다 */
@@ -932,8 +949,19 @@ const GEN = {
   RECENT: 4,          // 최근 몇 개의 레인을 기억해서 피할지
   SPREAD: 1.4,        // 최근에 쓴 레인을 얼마나 피할지
   OFF_HOME: 1.1,      // 대역이 원하는 자리를 벗어날 때의 벌점
-  BALANCE: 0.022,     // 많이 쓴 레인을 피하는 정도. 곡 전체의 쏠림을 막는다
-  MULTI_BONUS: 0.35   // 여러 악기가 동시에 울린 자리에 주는 가산점
+  BALANCE: 0.034,     // 많이 쓴 레인을 피하는 정도. 곡 전체의 쏠림을 막는다
+                      // 킥이 두꺼운 곡(로파이 등)은 바깥 레인으로 몰리기 쉽다
+  MULTI_BONUS: 0.35,  // 여러 악기가 동시에 울린 자리에 주는 가산점
+
+  /* ---------- 사람답게 ---------- */
+  CONTOUR: 0.9,       // 멜로디 방향과 반대로 갈 때 벌점. 0 이면 멜로디를 무시한다
+  CONTOUR_SEMI: 0.8,  // 이 반음 수 이상 움직여야 "음이 올라갔다/내려갔다"로 본다
+  REPEAT_SIM: 0.78,   // 두 마디가 이만큼 닮으면 같은 채보를 입힌다 (0~1)
+                      // 낮추면 더 많이 반복되고, 높이면 확실한 것만 반복된다
+
+  W_JT: 0.14,         // 점프트릴 비율 (VERY HARD 에서만)
+  JT_MIN_SEC: 0.14,   // 점프트릴 최소 간격(초)
+  JT_MAX_LEN: 6       // 점프트릴 최대 길이
 };
 
 const tick0 = () => new Promise(r => setTimeout(r, 0));
@@ -1008,6 +1036,23 @@ function detectIn(f, a, A, B, seed){
 }
 
 
+/* =========================================================
+   시드가 있는 난수
+
+   Math.random() 은 누를 때마다 다른 채보를 낸다.
+   같은 곡 같은 설정이면 같은 채보가 나와야 쓸 만하다.
+   마음에 드는 채보가 나오면 시드 숫자만 적어두면 된다.
+   ========================================================= */
+function makeRng(seed){
+  let a = (seed >>> 0) || 1;
+  return function(){
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /* ---------- 한 대역에서 봉우리를 뽑는다 ---------- */
 function peaksOf(arr, t0, fps, c0, c1, sens, win){
   const out = [];
@@ -1015,28 +1060,36 @@ function peaksOf(arr, t0, fps, c0, c1, sens, win){
     if(arr[i] <= arr[i-1] || arr[i] < arr[i+1]) continue;
     const t = t0 + i / fps;
     if(t < c0 || t >= c1) continue;
-
     let s = 0, n = 0;
     for(let j = Math.max(0, i - win); j <= Math.min(arr.length - 1, i + win); j++){ s += arr[j]; n++; }
     const mean = s / n;
     if(mean <= 0) continue;
-
     const st = arr[i] / mean;
     if(st < sens) continue;
-    out.push({ t:t, st:st });
+    out.push({ t:t, st:st, i:i });
   }
   return out;
 }
 
-/* 대역별로 손이 가는 자리.
-   낮은 소리는 바깥쪽, 높은 소리는 안쪽으로 몰아둔다.
-   그래야 킥이 항상 같은 느낌의 자리에서 오고,
-   킥+하이햇 동시치기가 자연스럽게 벌어진 모양이 된다. */
+/* 대역별로 손이 가는 자리. 낮은 소리는 바깥, 높은 소리는 안쪽 */
 function homeOf(bset){
   const hasL = bset.has('L'), hasH = bset.has('H');
   if(hasL && !hasH) return [0, 3];
   if(hasH && !hasL) return [1, 2];
   return [0, 1, 2, 3];
+}
+
+/* 박자 목록 위에서 t 가 몇 번째 박 어디쯤인지 (소수) */
+function beatPos(beats, t){
+  let lo = 0, hi = beats.length - 1;
+  if(t <= beats[0]) return (t - beats[0]) / ((beats[1] - beats[0]) || 0.3);
+  if(t >= beats[hi]) return hi + (t - beats[hi]) / ((beats[hi] - beats[hi-1]) || 0.3);
+  while(hi - lo > 1){ const m = (lo + hi) >> 1; if(beats[m] <= t) lo = m; else hi = m; }
+  return lo + (t - beats[lo]) / (beats[lo+1] - beats[lo]);
+}
+function timeAt(beats, p){
+  const i = Math.max(0, Math.min(beats.length - 2, Math.floor(p)));
+  return beats[i] + (p - i) * (beats[i+1] - beats[i]);
 }
 
 
@@ -1059,30 +1112,37 @@ async function generate(full){
     say('분석 중... 곡 전체면 몇 초 걸린다');
     await tick0();
 
+    const rnd = makeRng(Number($('seed').value) || 1);
+
     const a  = fluxOf(buf, A, B);
-    const fs = sharpen(a.flux, CFG.AUTO_WIN * 3);     // 템포 측정용
+    const fs = sharpen(a.flux, CFG.AUTO_WIN * 3);
+    // 반복 구간 찾기용 — 대역별로 날을 세운 곡선
+    const sL = sharpen(a.L, CFG.AUTO_WIN * 3);
+    const sM = sharpen(a.M, CFG.AUTO_WIN * 3);
+    const sH = sharpen(a.H, CFG.AUTO_WIN * 3);
     await tick0();
 
     const nps      = Math.max(0.3, Number($('nps').value) || 2.6);
     const gapVal   = Number($('gap').value);
     const div      = Math.round(1 / gapVal);
     const chordPct = Math.max(0, Math.min(60, Number($('chord').value) || 0)) / 100;
+    const patPct   = Math.max(0, Math.min(100, Number($('pat').value) || 0)) / 100;
+    const jt       = $('diff').selectedOptions && $('diff').selectedOptions[0]
+                     ? $('diff').selectedOptions[0].dataset.jt === '1' : false;
+    const useRep   = $('rep') ? $('rep').checked : true;
 
-    // 곡 전체 평균 (빈 곳 채우기 판단 + 밀도 조절 기준)
     let fmean = 0, emean = 0;
     for(let i = 0; i < a.flux.length; i++){ fmean += a.flux[i]; emean += a.energy[i]; }
     fmean /= (a.flux.length || 1);
     emean /= (a.energy.length || 1);
 
     const picked = [];
+    const beats = [];                 // 곡 전체를 잇는 박자 목록
     let firstGrid = null;
 
     const nCh   = Math.max(1, Math.round((B - A) / GEN.CHUNK));
     const chLen = (B - A) / nCh;
 
-    /* ---------- 기준 BPM ----------
-       첫 구간 하나만 보고 정하면 인트로의 흐릿한 박자에 속는다.
-       여러 군데서 재보고 가장 선명한 것을 고른다. */
     say('기준 박자 찾는 중...');
     await tick0();
 
@@ -1100,6 +1160,8 @@ async function generate(full){
       if(bestSeed) seed = bestSeed.bpm;
     }
 
+    let lowClarity = 0;
+
     for(let c = 0; c < nCh; c++){
       const c0 = A + c * chLen;
       const c1 = Math.min(B, c0 + chLen);
@@ -1110,9 +1172,16 @@ async function generate(full){
       const g = detectIn(fs, a, c0, c1, seed);
       seed = g.bpm;
       if(!firstGrid) firstGrid = g;
+      if(g.s < 0.12) lowClarity++;
 
       const beat = 60 / g.bpm;
       const minGap = beat * gapVal;
+
+      for(let k = Math.ceil((c0 - g.off) / beat); ; k++){
+        const t = g.off + k * beat;
+        if(t >= c1) break;
+        beats.push(t);
+      }
 
       /* ---------- 대역별 봉우리를 같은 시각끼리 묶는다 ---------- */
       const slots = new Map();
@@ -1121,23 +1190,19 @@ async function generate(full){
           const ts = snapG(p.t, g.bpm, g.off, div);
           const key = ts.toFixed(3);
           let s = slots.get(key);
-          if(!s){ s = { t:ts, st:0, b:new Set(), beat:beat }; slots.set(key, s); }
+          if(!s){ s = { t:ts, st:0, b:new Set(), beat:beat, pitch:0 }; slots.set(key, s); }
           s.b.add(name);
           if(p.st > s.st) s.st = p.st;
+          if(name === 'M') s.pitch = a.pitch[p.i] || 0;       // 멜로디 높이
         }
       }
 
-      /* 점수 = 세기 × 박자 자리 × 대역이 여럿이면 가산점
-         여러 악기가 한꺼번에 울리는 순간이 곡에서 제일 중요한 자리다 */
       for(const s of slots.values()){
-        s.score = s.st * (1 + GEN.BEAT_BONUS * gridWeight(s.t, g.bpm, g.off))
-                       * (1 + GEN.MULTI_BONUS * (s.b.size - 1));
+        s.gw = gridWeight(s.t, g.bpm, g.off);
+        s.score = s.st * (1 + GEN.BEAT_BONUS * s.gw) * (1 + GEN.MULTI_BONUS * (s.b.size - 1));
       }
 
-      /* ---------- 목표 개수만큼 고르기 ----------
-         ★ 목표를 그 구간의 소리 크기에 따라 조절한다.
-           조용한 데서 억지로 개수를 채우면 음악과 따로 놀고,
-           절정에서 개수가 모자라면 밋밋해진다. */
+      /* 목표 개수를 그 구간의 소리 크기에 따라 조절한다 */
       let chE = 0, cn = 0;
       for(let i = 0; i < a.energy.length; i++){
         const t = a.t0 + i / a.fps;
@@ -1149,7 +1214,6 @@ async function generate(full){
       const list = Array.from(slots.values()).sort((p, q) => q.score - p.score);
       const target = Math.round(nps * (c1 - c0) * heat);
       const sel = [];
-
       for(const v of list){
         if(sel.length >= target) break;
         let ok = true;
@@ -1158,14 +1222,13 @@ async function generate(full){
       }
       sel.sort((p, q) => p.t - q.t);
 
-      /* ---------- 빈 곳 채우기 ---------- */
+      /* 빈 곳 채우기 */
       const energyAt = t => {
         const i = Math.round((t - a.t0) * a.fps);
         let s = 0, n = 0;
         for(let j = Math.max(0, i - 8); j <= Math.min(a.flux.length - 1, i + 8); j++){ s += a.flux[j]; n++; }
         return n ? s / n : 0;
       };
-
       const fillStep = Math.max(1, Math.round((1 / nps) / beat));
       const fillThresh = Math.max(1.6, Math.min(GEN.FILL_GAP, fillStep * 2)) * beat;
 
@@ -1175,12 +1238,11 @@ async function generate(full){
         const nx = sel[i + 1];
         if(!nx) continue;
         if(nx.t - sel[i].t <= fillThresh) continue;
-
         const st = snapG(sel[i].t + fillStep * beat, g.bpm, g.off, 1);
         for(let t = st; t < nx.t - beat * 0.5; t += fillStep * beat){
           if(t <= sel[i].t + beat * 0.5) continue;
           if(energyAt(t) < fmean * GEN.FILL_FLOOR) continue;
-          filled.push({ t:t, st:0, score:0, b:new Set(['M']), beat:beat });
+          filled.push({ t:t, st:0, score:0, b:new Set(['M']), beat:beat, pitch:0, gw:GEN.BEAT_W });
         }
       }
 
@@ -1189,8 +1251,19 @@ async function generate(full){
 
     picked.sort((p, q) => p.t - q.t);
 
+    // 박자 목록 정리 — 구간 경계에서 겹친 박을 지운다
+    beats.sort((p, q) => p - q);
+    for(let i = beats.length - 1; i > 0; i--){
+      if(beats[i] - beats[i-1] < (60 / (seed || 180)) * 0.45) beats.splice(i, 1);
+    }
+
     /* =========================================================
        레인 배치
+
+       비용이 가장 낮은 레인을 고른다. 비용에 들어가는 것:
+         · 대역이 원하는 자리에서 벗어났는가
+         · 최근에 썼는가 / 곡 전체에서 많이 썼는가
+         · ★ 멜로디 방향과 반대로 가는가
        ========================================================= */
     say('레인 배치 중...');
     await tick0();
@@ -1199,7 +1272,8 @@ async function generate(full){
     let prevLane = -1, prevT = -1e9;
     let runLane = -1, runLen = 0;
     const recent = [];
-    let used = [0, 0, 0, 0];          // 레인별 누적 사용량 — 한쪽 쏠림 방지
+    const used = [0, 0, 0, 0];
+    let lastPitch = 0, lastPitchLane = -1;
 
     for(const v of picked){
       const home = homeOf(v.b);
@@ -1213,19 +1287,35 @@ async function generate(full){
         for(let L = 0; L < CFG.LANES; L++) if((L < CFG.LANES / 2) === left) banned.add(L);
       }
 
+      /* ★ 멜로디 따라가기
+         음이 반음 이상 올라가면 오른쪽, 내려가면 왼쪽을 선호한다.
+         노래를 들으며 칠 때 손이 음정을 따라 움직이는 느낌이 난다. */
+      let dir = 0;
+      if(v.pitch && lastPitch && lastPitchLane >= 0){
+        const dp = (v.pitch - lastPitch) * 12;     // 반음 단위
+        if(dp >  GEN.CONTOUR_SEMI) dir =  1;
+        if(dp < -GEN.CONTOUR_SEMI) dir = -1;
+      }
+
       let lane = -1, bestCost = Infinity;
       for(let L = 0; L < CFG.LANES; L++){
         if(banned.has(L)) continue;
-        let cost = home.includes(L) ? 0 : GEN.OFF_HOME;      // 대역이 원하는 자리에서 벗어나면 벌점
-        cost += used[L] * GEN.BALANCE;                       // 많이 쓴 레인일수록 벌점
+        let cost = home.includes(L) ? 0 : GEN.OFF_HOME;
+        cost += used[L] * GEN.BALANCE;
         for(let r = 0; r < recent.length; r++){
           if(recent[r] === L) cost += GEN.SPREAD * (recent.length - r) / recent.length;
         }
+        if(dir !== 0){
+          const mv = L - lastPitchLane;
+          if(Math.sign(mv) !== dir) cost += GEN.CONTOUR;
+        }
+        cost += rnd() * 0.05;                      // 동점일 때 한쪽으로만 몰리지 않게
         if(cost < bestCost){ bestCost = cost; lane = L; }
       }
       if(lane < 0) lane = (prevLane + 1) % CFG.LANES;
 
-      made.push({ t:Number(v.t.toFixed(4)), lane:lane, score:v.score || 0, beat:v.beat, b:v.b });
+      made.push({ t:Number(v.t.toFixed(4)), lane:lane, score:v.score || 0,
+                  beat:v.beat, b:v.b, gw:v.gw || 0 });
       used[lane]++;
 
       if(lane === runLane) runLen++; else { runLane = lane; runLen = 1; }
@@ -1233,13 +1323,12 @@ async function generate(full){
       prevT = v.t;
       recent.push(lane);
       if(recent.length > GEN.RECENT) recent.shift();
+      if(v.pitch){ lastPitch = v.pitch; lastPitchLane = lane; }
     }
 
     /* =========================================================
        손 패턴
        ========================================================= */
-    const patPct = Math.max(0, Math.min(100, Number($('pat').value) || 0)) / 100;
-
     if(patPct > 0 && made.length > 3){
       let i = 0;
       while(i < made.length - 2){
@@ -1253,29 +1342,40 @@ async function generate(full){
           if(Math.abs(gg - g0) > g0 * GEN.PAT_TOL) break;
           j++;
         }
-        const len = j - i + 1;
-        if(len < GEN.PAT_MIN_LEN || Math.random() > patPct){ i = j; continue; }
 
-        applyPattern(made, i, j, g0);
-        for(let k = i; k <= j; k++) made[k].pat = true;
+        /* ★ 사람은 패턴을 박자 머리에서 시작한다.
+           엇박에서 갑자기 계단이 시작되면 어색하다.
+           그래서 첫 노트가 정박이 될 때까지 앞을 잘라낸다. */
+        let s0 = i;
+        while(s0 < j && made[s0].gw < GEN.BEAT_W - 0.01) s0++;
 
-        /* 패턴 직후 노트가 마지막 레인과 같으면 잭이 한 칸 더 길어진다.
-           잭 4개를 만들어놨는데 뒤에 하나 붙어서 5개가 되는 식이다.
-           기준을 JACK_MIN_SEC 이 아니라 패턴 간격 전체로 잡아야 막힌다. */
+        const len = j - s0 + 1;
+        if(len < GEN.PAT_MIN_LEN || rnd() > patPct){ i = j; continue; }
+
+        applyPattern(made, s0, j, g0, rnd, jt);
+        for(let k = s0; k <= j; k++) made[k].pat = true;
+
         if(j + 1 < made.length && made[j+1].lane === made[j].lane
            && made[j+1].t - made[j].t <= GEN.PAT_MAX_GAP * b){
           made[j+1].lane = (made[j].lane + 1) % CFG.LANES;
         }
         i = j;
       }
+
+      // 점프트릴은 짝 노트를 여기서 펼친다
+      const jtx = [];
+      for(const m of made){
+        if(m.jt !== undefined){
+          jtx.push({ t:m.t, lane:m.jt, score:0, beat:m.beat, b:m.b, pat:true, gw:m.gw });
+          delete m.jt;
+        }
+      }
+      for(const e of jtx) made.push(e);
+      made.sort((p, q) => p.t - q.t);
     }
 
     /* =========================================================
-       동시치기
-
-       ★ 이제 무작위가 아니다.
-         두 대역이 같은 순간에 울린 자리(킥+하이햇 등)를 우선한다.
-         실제로 음악에서 두 악기가 겹친 순간이라 귀에 자연스럽다.
+       동시치기 — 두 악기가 겹친 자리부터
        ========================================================= */
     if(chordPct > 0 && made.length > 2){
       const elig = [];
@@ -1287,13 +1387,10 @@ async function generate(full){
         if(Math.min(gp, gn) < GEN.CHORD_GAP * b) continue;
         elig.push(i);
       }
-      // 대역이 여럿인 자리를 앞세운다
-      elig.sort((p, q) =>
-        (made[q].b.size - made[p].b.size) || (made[q].score - made[p].score));
+      elig.sort((p, q) => (made[q].b.size - made[p].b.size) || (made[q].score - made[p].score));
 
       const take = Math.round(elig.length * chordPct);
       const extra = [];
-
       for(let k = 0; k < take; k++){
         const i = elig[k];
         const L = made[i].lane;
@@ -1302,23 +1399,192 @@ async function generate(full){
         const pool = (k % 5 === 0) ? near : far;
         const pick = pool[k % pool.length];
         if(pick === L) continue;
-
-        extra.push({ t:made[i].t, lane:pick, score:0, beat:made[i].beat, b:made[i].b });
-
-        if(Math.random() < GEN.CHORD_TRIPLE){
+        extra.push({ t:made[i].t, lane:pick, score:0, beat:made[i].beat, b:made[i].b, gw:made[i].gw });
+        if(rnd() < GEN.CHORD_TRIPLE){
           for(let L3 = 0; L3 < CFG.LANES; L3++){
             if(L3 === L || L3 === pick) continue;
-            extra.push({ t:made[i].t, lane:L3, score:0, beat:made[i].beat, b:made[i].b });
+            extra.push({ t:made[i].t, lane:L3, score:0, beat:made[i].beat, b:made[i].b, gw:made[i].gw });
             break;
           }
         }
       }
-
       for(const e of extra){
         const dup = made.some(m => m.lane === e.lane && Math.abs(m.t - e.t) < 0.012);
         if(!dup) made.push(e);
       }
       made.sort((p, q) => p.t - q.t);
+    }
+
+    /* =========================================================
+       ★ 반복 구간에 같은 채보 입히기
+
+       사람이 짠 채보와 기계가 짠 채보의 가장 큰 차이가 여기다.
+       사람은 후렴이 다시 나오면 채보도 다시 나오게 짠다.
+       플레이어는 그걸 외우고, 두 번째에 "아 이거" 하면서 친다.
+
+       곡을 마디로 자르고, 각 마디가 어느 악기가 몇 번째 16분음표에서
+       울리는지를 지문처럼 만든다. 지문이 닮은 앞 마디가 있으면
+       그 마디의 채보를 그대로 가져온다. 한 번씩 좌우를 뒤집어서
+       똑같기만 하진 않게 한다.
+       ========================================================= */
+    let repCount = 0;
+    if(useRep && beats.length > 12){
+      say('반복 구간 찾는 중...');
+      await tick0();
+
+      const at = (arr, t, w) => {
+        const i = Math.round((t - a.t0) * a.fps);
+        let mx = 0;
+        for(let k = i - w; k <= i + w; k++) if(k >= 0 && k < arr.length && arr[k] > mx) mx = arr[k];
+        return mx;
+      };
+      const bw = Math.max(1, Math.round((beats[1] - beats[0]) / 8 * a.fps));
+
+      // 강박 찾기 — 킥이 가장 세게 떨어지는 위상이 마디 첫 박이다
+      let ph = 0, phBest = -1;
+      for(let p = 0; p < 4; p++){
+        let s = 0;
+        for(let k = p; k < beats.length; k += 4) s += at(sL, beats[k], bw);
+        if(s > phBest){ phBest = s; ph = p; }
+      }
+
+      const bars = [];
+      for(let k = ph; k + 4 < beats.length; k += 4) bars.push(k);
+
+      // 마디마다 지문 만들기: 16칸 × 3대역
+      const feat = bars.map(k => {
+        const v = new Float32Array(48);
+        for(let s = 0; s < 16; s++){
+          const t = timeAt(beats, k + s / 4);
+          v[s*3] = at(sL, t, bw); v[s*3+1] = at(sM, t, bw); v[s*3+2] = at(sH, t, bw);
+        }
+        let m = 0; for(const x of v) m += x; m /= 48;
+        let n = 0; for(let i = 0; i < 48; i++){ v[i] -= m; n += v[i] * v[i]; }
+        n = Math.sqrt(n) || 1;
+        for(let i = 0; i < 48; i++) v[i] /= n;
+        return v;
+      });
+
+      const useCnt = new Map();
+
+      for(let j = 1; j < bars.length; j++){
+        let bk = -1, bs = GEN.REPEAT_SIM;
+        for(let k = 0; k < j; k++){
+          let s = 0;
+          for(let i = 0; i < 48; i++) s += feat[j][i] * feat[k][i];
+          if(s > bs){ bs = s; bk = k; }
+        }
+        if(bk < 0) continue;
+
+        const kS = bars[bk], jS = bars[j];
+        const src = made.filter(m => { const p = beatPos(beats, m.t); return p >= kS - 1e-3 && p < kS + 4 - 1e-3; });
+        const dst = made.filter(m => { const p = beatPos(beats, m.t); return p >= jS - 1e-3 && p < jS + 4 - 1e-3; });
+        if(!src.length) continue;
+        // 밀도가 너무 다르면 곡이 비슷해도 옮기지 않는다
+        if(dst.length && (src.length > dst.length * 1.6 || src.length < dst.length * 0.6)) continue;
+
+        const n = (useCnt.get(bk) || 0) + 1;
+        const mirror = n % 2 === 1;
+
+        const build = mir => src.map(m => ({
+          t: Number(timeAt(beats, jS + (beatPos(beats, m.t) - kS)).toFixed(4)),
+          lane: mir ? (CFG.LANES - 1 - m.lane) : m.lane,
+          score: m.score, beat: m.beat, b: m.b, gw: m.gw, rep: true
+        }));
+
+        // 이음매 검사 — 마디 앞뒤 노트와 잭이 생기면 다른 쪽을 시도한다
+        const tS = timeAt(beats, jS), tE = timeAt(beats, jS + 4);
+        const before = made.filter(m => m.t < tS - 1e-3).slice(-3);
+        const after  = made.filter(m => m.t >= tE - 1e-3).slice(0, 3);
+        const clash = arr => {
+          if(!arr.length) return false;
+          const first = arr.reduce((p, q) => q.t < p.t ? q : p);
+          const last  = arr.reduce((p, q) => q.t > p.t ? q : p);
+          for(const b of before) if(b.lane === first.lane && first.t - b.t < GEN.JACK_MIN_SEC * 1.5) return true;
+          for(const f of after)  if(f.lane === last.lane  && f.t - last.t < GEN.JACK_MIN_SEC * 1.5) return true;
+          return false;
+        };
+
+        let copy = build(mirror);
+        if(clash(copy)){ copy = build(!mirror); if(clash(copy)) continue; }
+
+        const dropSet = new Set(dst);
+        for(let i = made.length - 1; i >= 0; i--) if(dropSet.has(made[i])) made.splice(i, 1);
+        for(const c of copy) made.push(c);
+        made.sort((p, q) => p.t - q.t);
+
+        useCnt.set(bk, n);
+        repCount++;
+      }
+    }
+
+    // 최종 정리 — 같은 레인 같은 시각 중복 제거
+    made.sort((p, q) => p.t - q.t || p.lane - q.lane);
+    for(let i = made.length - 1; i > 0; i--){
+      if(made[i].lane === made[i-1].lane && Math.abs(made[i].t - made[i-1].t) < 0.012) made.splice(i, 1);
+    }
+
+    /* =========================================================
+       ★ 마지막 안전검사
+
+       레인 배치 → 패턴 → 점프트릴 → 동시치기 → 반복 복사.
+       각 단계는 자기 안에서는 규칙을 지키지만, 단계끼리 만나는
+       이음매에서 못 치는 배치가 생긴다. (실제로 생겼다)
+       단계마다 막으려고 하면 끝이 없다.
+
+       그래서 각 단계는 제 할 일만 하고, 칠 수 있는지는 여기서
+       한 번에 보장한다. 걸리면 가장 오래 쉰 빈 레인으로 옮기고,
+       옮길 데가 없으면 버린다.
+       ========================================================= */
+    {
+      const lastT = [-9, -9, -9, -9];
+      const jackRun = [0, 0, 0, 0];
+      let prevGroup = new Set(), prevGT = -9;
+      const out = [];
+      let fixed = 0, dropped = 0;
+
+      let i = 0;
+      while(i < made.length){
+        let j = i;
+        while(j + 1 < made.length && Math.abs(made[j+1].t - made[i].t) < 0.012) j++;
+        const t = made[i].t;
+        const taken = new Set();
+
+        for(let k = i; k <= j; k++){
+          const m = made[k];
+          let L = m.lane;
+
+          const tooFast = t - lastT[L] < GEN.JACK_MIN_SEC;
+          const tooLong = prevGroup.has(L) && t - prevGT < 0.25 && jackRun[L] >= GEN.JACK_MAX_LEN;
+
+          if(taken.has(L) || tooFast || tooLong){
+            let best = -1, bestRest = -1;
+            for(let c = 0; c < CFG.LANES; c++){
+              if(taken.has(c)) continue;
+              const rest = t - lastT[c];
+              if(rest >= GEN.JACK_MIN_SEC && rest > bestRest){ bestRest = rest; best = c; }
+            }
+            if(best < 0){ dropped++; continue; }
+            L = best; fixed++;
+          }
+          m.lane = L;
+          taken.add(L);
+          out.push(m);
+        }
+
+        for(let c = 0; c < CFG.LANES; c++){
+          if(taken.has(c)) jackRun[c] = (prevGroup.has(c) && t - prevGT < 0.25) ? jackRun[c] + 1 : 1;
+          else if(!taken.has(c)) jackRun[c] = 0;
+        }
+        for(const c of taken) lastT[c] = t;
+        prevGroup = taken;
+        prevGT = t;
+        i = j + 1;
+      }
+      made.length = 0;
+      for(const m of out) made.push(m);
+      made.__fixed = fixed;
+      made.__dropped = dropped;
     }
 
     /* ---------- 합치기 ---------- */
@@ -1335,8 +1601,9 @@ async function generate(full){
     }
 
     const dens = made.length / (B - A);
-    let msg = '노트 ' + made.length + '개 · 초당 ' + dens.toFixed(2) + '개 · 구간 ' + nCh + '개';
+    let msg = '노트 ' + made.length + '개 · 초당 ' + dens.toFixed(2) + '개 · 반복 마디 ' + repCount + '개';
     if(dens < nps * 0.85) msg += ' · 최소간격을 좁혀야 더 넣을 수 있다';
+    if(lowClarity > nCh / 2) msg += ' · ⚠ 박자가 흐릿한 곡이다. 결과가 어색할 수 있다';
     say(msg);
 
   }catch(err){
@@ -1348,18 +1615,19 @@ async function generate(full){
 
 
 /* =========================================================
-   손 패턴 다섯 가지
+   손 패턴
 
-     계단    0 1 2 3 2 1      손이 한 방향으로 흐른다
-     트릴    0 2 0 2          두 레인을 번갈아
-     지그재그 0 2 1 3 0 2 1 3  벌어진 트릴. 손이 크게 움직인다
-     앵커    1 0 1 2 1 3      한 레인을 붙잡고 나머지가 움직인다
-     잭      1 1 1            같은 레인 연타. 제일 어렵다
+     계단     0 1 2 3 2 1       손이 한 방향으로 흐른다
+     트릴     0 2 0 2           두 레인을 번갈아
+     지그재그  0 2 1 3           벌어진 트릴
+     앵커     1 0 1 2 1 3       한 손가락을 붙잡고 나머지가 움직인다
+     잭       1 1 1             같은 레인 연타
+     점프트릴  [01][23][01][23]  두 개씩 번갈아. VERY HARD 전용
    ========================================================= */
-function applyPattern(made, i, j, g0){
+function applyPattern(made, i, j, g0, rnd, jt){
   const start = made[i].lane;
   const len = j - i + 1;
-  const r = Math.random();
+  const r = rnd();
 
   let acc = GEN.W_JACK;
   if(r < acc && g0 >= GEN.JACK_MIN_SEC && len <= GEN.JACK_MAX_LEN){
@@ -1371,24 +1639,21 @@ function applyPattern(made, i, j, g0){
   if(r < acc){
     const far = start < 2 ? [2, 3] : [0, 1];
     const near = start < 2 ? 1 - start : 5 - start;
-    const mate = (Math.random() < 0.25) ? near : far[Math.floor(Math.random() * 2)];
+    const mate = (rnd() < 0.25) ? near : far[Math.floor(rnd() * 2)];
     for(let k = i; k <= j; k++) made[k].lane = ((k - i) % 2 === 0) ? start : mate;
     return;
   }
 
   acc += GEN.W_ZIG;
   if(r < acc){
-    // 0 2 1 3 처럼 크게 벌어져 도는 네 박자 고리
     const seqs = [[0,2,1,3], [3,1,2,0], [1,3,0,2], [2,0,3,1]];
-    const seq = seqs[Math.floor(Math.random() * seqs.length)];
+    const seq = seqs[Math.floor(rnd() * seqs.length)];
     for(let k = i; k <= j; k++) made[k].lane = seq[(k - i) % 4];
     return;
   }
 
   acc += GEN.W_ANCHOR;
   if(r < acc && len >= 4){
-    /* 한 레인을 계속 붙잡고 나머지가 그 사이를 채운다.
-       손가락 하나가 고정돼 있어서 잭만큼 어렵진 않은데 꽤 까다롭다. */
     const anchor = start;
     const others = [0,1,2,3].filter(L => L !== anchor);
     let oi = 0;
@@ -1398,8 +1663,24 @@ function applyPattern(made, i, j, g0){
     return;
   }
 
+  /* 점프트릴 — 두 손이 두 개씩 번갈아 누른다.
+     ★ 0.14초보다 촘촘하면 안 만든다. 손 전체를 들었다 놓는 동작이라
+       트릴보다 한참 느리게밖에 못 친다. */
+  if(jt){
+    acc += GEN.W_JT;
+    if(r < acc && g0 >= GEN.JT_MIN_SEC && len <= GEN.JT_MAX_LEN){
+      const flip = rnd() < 0.5;
+      for(let k = i; k <= j; k++){
+        const left = ((k - i) % 2 === 0) !== flip;
+        made[k].lane = left ? 0 : 2;
+        made[k].jt   = left ? 1 : 3;
+      }
+      return;
+    }
+  }
+
   // 나머지는 계단
-  let lane = start, dir = Math.random() < 0.5 ? 1 : -1;
+  let lane = start, dir = rnd() < 0.5 ? 1 : -1;
   if(lane === 0) dir = 1;
   if(lane === CFG.LANES - 1) dir = -1;
   for(let k = i; k <= j; k++){
@@ -1412,6 +1693,7 @@ function applyPattern(made, i, j, g0){
 
 function autoGen(){ return generate(false); }
 $('fullBtn').addEventListener('click', () => generate(true));
+$('seedBtn').addEventListener('click', () => { $('seed').value = 1 + Math.floor(Math.random() * 99999); });
 
 /* 난이도를 고르면 초당 노트 수가 따라온다 */
 $('diff').addEventListener('change', () => {
